@@ -32,7 +32,7 @@ args = [
     '--hidden-import=pyserial',
 
     # Mac specific optimizations
-    '--target-architecture=universal2', # Try to build for both M1 and Intel if possible (requires universal python)
+    # '--target-architecture=universal2', # Removed: Causes issues with Anaconda/Single-arch Python
 ]
 
 if __name__ == '__main__':
