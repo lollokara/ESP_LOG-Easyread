@@ -460,4 +460,19 @@ def main_page(client: Client):
     viewer.build_ui()
 
 if __name__ in {"__main__", "__mp_main__"}:
-    ui.run(title="ESP32 Serial Monitor", port=8080, reload=False)
+    # Check if running as a bundled app or script
+    # If bundled (sys.frozen), run in native mode
+    # native=True requires pywebview to be installed
+    import sys
+    is_bundled = getattr(sys, 'frozen', False)
+
+    # We use native mode if bundled, or if explicitly requested via args (optional)
+    # For development, reload=False is safer with native mode usually.
+
+    # Note: On Mac M1, native=True uses the system's webview (WebKit).
+    ui.run(
+        title="ESP32 Serial Monitor",
+        port=8080,
+        reload=False,
+        native=is_bundled  # Only use native window if packaged as an app
+    )
