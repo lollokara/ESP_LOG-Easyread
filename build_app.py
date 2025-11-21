@@ -1,12 +1,19 @@
 import PyInstaller.__main__
 import os
 import sys
+from PyInstaller.utils.hooks import collect_data_files
 
 # Define the application name
 APP_NAME = "ESP32_Monitor"
 
 # Determine separator for path
 sep = os.pathsep
+
+# Collect NiceGUI static files
+# This returns a list of tuples (source, dest)
+# We need to format them as 'source:dest' for the args list
+datas = collect_data_files('nicegui')
+add_data_args = [f'--add-data={src}{sep}{dest}' for src, dest in datas]
 
 # Basic PyInstaller arguments
 args = [
@@ -16,7 +23,7 @@ args = [
     '--windowed',                     # No console window (Mac/Windows)
     '--clean',                        # Clean cache
     '--add-data=requirements.txt:.',  # Add any data files if needed
-
+] + add_data_args + [
     # NiceGUI / Starlette / Uvicorn hidden imports
     # These are often missed by PyInstaller's auto-analysis
     '--hidden-import=uvicorn.logging',
