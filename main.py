@@ -21,7 +21,7 @@ class AppState:
         self.port = None
         self.baud = 115200
         self.filter_level = "ALL"
-        self.filter_file = "ALL"
+        self.filter_file = ["ALL"] # Changed to list for multi-select
         self.filter_function = "ALL"
         self.auto_scroll = True
         self.auto_reconnect = False
@@ -127,8 +127,14 @@ class LogViewer:
     def matches_filter(self, entry: LogEntry) -> bool:
         if self.filter_level != "ALL" and entry.level != self.filter_level:
             return False
-        if self.filter_file != "ALL" and entry.file != self.filter_file:
-            return False
+
+        # Multi-select logic for file
+        # If "ALL" is in the list, we show everything.
+        # Otherwise, we check if entry.file is in the list.
+        if "ALL" not in self.filter_file:
+            if entry.file not in self.filter_file:
+                return False
+
         if self.filter_function != "ALL" and entry.function != self.filter_function:
             return False
         return True
@@ -249,23 +255,45 @@ class LogViewer:
         safe_msg = entry.message.replace("<", "&lt;").replace(">", "&gt;")
 
         return f"""
-        <div class="w-full flex gap-1 font-mono text-sm items-start no-wrap hover:bg-gray-100">
+        <div class="w-full flex gap-1 font-mono text-sm items-start no-wrap hover:bg-gray-100 select-text">
             <div class="text-gray-400 w-20 shrink-0">[{ts_str}]</div>
             <div class="{color_class} w-8 shrink-0">[{entry.level}]</div>
             <div class="text-purple-600 w-48 shrink-0 truncate" title="{entry.file}">{file_str}</div>
             <div class="text-orange-600 w-40 shrink-0 truncate" title="{entry.function}">{func_str}</div>
-            <div class="{color_class} grow break-all">{safe_msg}</div>
+            <div class="{color_class} grow break-all select-text">{safe_msg}</div>
         </div>
         """
 
+    def on_file_filter_change(self, e):
+        # Smart logic for "ALL" vs specific selection
+        new_val = e.value
+        if not new_val:
+            # Empty -> Default to ALL
+            self.filter_file = ["ALL"]
+            self.file_select.value = ["ALL"]
+        else:
+            # If "ALL" was present and we added something else, remove "ALL"
+            if "ALL" in self.filter_file and len(new_val) > len(self.filter_file):
+                # User added a specific item, remove ALL
+                new_val = [x for x in new_val if x != "ALL"]
+                self.file_select.value = new_val
+            # If something else was present and we selected "ALL", remove others
+            elif "ALL" not in self.filter_file and "ALL" in new_val:
+                # User clicked ALL, clear others
+                new_val = ["ALL"]
+                self.file_select.value = new_val
+
+            self.filter_file = new_val
+
+        app_state.filter_file = self.filter_file
+        self.refresh_log_view()
+
     def on_filter_change(self):
         self.filter_level = self.level_select.value
-        self.filter_file = self.file_select.value
         self.filter_function = self.function_select.value
 
         # Save to app state
         app_state.filter_level = self.filter_level
-        app_state.filter_file = self.filter_file
         app_state.filter_function = self.filter_function
 
         self.refresh_log_view()
@@ -381,8 +409,9 @@ class LogViewer:
                 options=sorted(list(unique_files)),
                 value=app_state.filter_file,
                 label="File",
-                on_change=self.on_filter_change
-            ).classes('w-full')
+                multiple=True,
+                on_change=self.on_file_filter_change
+            ).classes('w-full').props('use-chips')
 
             self.function_select = ui.select(
                 options=sorted(list(unique_functions)),
@@ -394,8 +423,14 @@ class LogViewer:
             ui.separator().classes('my-4')
             ui.button("Clear Logs", on_click=self.on_clear_logs, color='red').classes('w-full')
 
-        # JS Injection for performance
+        # JS Injection for performance & Selection fix
         ui.add_head_html("""
+        <style>
+        .select-text {
+            -webkit-user-select: text !important;
+            user-select: text !important;
+        }
+        </style>
         <script>
         window.logManager = {
             append: function(id, html, maxLines, autoScroll) {
@@ -442,10 +477,10 @@ class LogViewer:
                 ui.switch("Scroll", value=app_state.auto_scroll, on_change=self.on_autoscroll_change).tooltip("Auto-scroll")
 
             # Log Area (Grow to fill remaining space)
-            self.scroll_area = ui.scroll_area().classes('w-full grow bg-gray-50 p-4')
+            self.scroll_area = ui.scroll_area().classes('w-full grow bg-gray-50 p-4 select-text')
             with self.scroll_area:
                 # We use a div container with a specific ID for JS manipulation
-                self.log_container = ui.element('div').props(f'id="{self.log_container_id}"').classes('w-full flex flex-col')
+                self.log_container = ui.element('div').props(f'id="{self.log_container_id}"').classes('w-full flex flex-col select-text')
 
         # Start the update timer for this client (Slightly slower to batch updates)
         ui.timer(0.2, self.update_loop)
