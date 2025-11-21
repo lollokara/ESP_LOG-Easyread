@@ -88,23 +88,34 @@ class SerialManager:
         self._thread.start()
 
     def _read_loop(self):
+        buffer = bytearray()
         while self.should_run:
             if self.is_connected and self.serial_port and self.serial_port.is_open:
                 try:
                     if self.serial_port.in_waiting > 0:
-                        line_bytes = self.serial_port.readline()
-                        try:
-                            line = line_bytes.decode('utf-8', errors='replace')
-                        except Exception:
-                            line = str(line_bytes)
+                        data = self.serial_port.read(self.serial_port.in_waiting)
+                        buffer.extend(data)
 
-                        log_entry = LogParser.parse(line)
-                        if log_entry:
-                            self.on_log_received(log_entry)
+                        while b'\n' in buffer:
+                            idx = buffer.find(b'\n')
+                            line_bytes = buffer[:idx+1]
+                            buffer = buffer[idx+1:]
 
-                            if self.save_to_file and self.file_handle:
-                                self.file_handle.write(log_entry.to_file_format() + "\n")
-                                self.file_handle.flush()
+                            try:
+                                line = line_bytes.decode('utf-8', errors='replace').strip()
+                            except Exception:
+                                line = str(line_bytes)
+
+                            if not line:
+                                continue
+
+                            log_entry = LogParser.parse(line)
+                            if log_entry:
+                                self.on_log_received(log_entry)
+
+                                if self.save_to_file and self.file_handle:
+                                    self.file_handle.write(log_entry.to_file_format() + "\n")
+                                    self.file_handle.flush()
                     else:
                         time.sleep(0.01)
                 except (OSError, serial.SerialException) as e:
@@ -116,6 +127,7 @@ class SerialManager:
                     except Exception:
                         pass
                     self.serial_port = None
+                    buffer.clear()
             else:
                 # Not connected
                 if self.auto_reconnect and self.should_run:

@@ -258,7 +258,7 @@ class LogViewer:
         safe_msg = entry.message.replace("<", "&lt;").replace(">", "&gt;")
 
         return f"""
-        <div class="w-full flex gap-1 font-mono text-sm items-start no-wrap hover:bg-gray-100 select-text">
+        <div class="log-line w-full flex gap-1 font-mono text-sm items-start no-wrap hover:bg-gray-100 select-text">
             <div class="text-gray-400 w-20 shrink-0">[{ts_str}]</div>
             <div class="{color_class} w-8 shrink-0">[{entry.level}]</div>
             <div class="text-purple-600 w-48 shrink-0 truncate" title="{entry.file}">{file_str}</div>
@@ -440,9 +440,13 @@ class LogViewer:
         # JS Injection for performance & Selection fix
         ui.add_head_html("""
         <style>
+        body { overflow: hidden; }
         .select-text {
             -webkit-user-select: text !important;
             user-select: text !important;
+        }
+        .log-line {
+            line-height: 1.5;
         }
         </style>
         <script>
@@ -450,26 +454,34 @@ class LogViewer:
             append: function(id, html, maxLines, autoScroll) {
                 const el = document.getElementById(id);
                 if (!el) return;
+
+                const scrollTarget = el.closest('.q-scrollarea').querySelector('.q-scrollarea__container');
+
                 el.insertAdjacentHTML('beforeend', html);
-                // Remove old children if needed
-                // Note: childElementCount is fast.
-                // Removing from start is O(N) in DOM, but for 2000 items it's instant.
-                while (el.childElementCount > maxLines) {
-                    el.firstElementChild.remove();
-                }
-                if (autoScroll) {
-                    const scrollArea = el.closest('.q-scrollarea__container')
-                                     || el.closest('.q-scrollarea__content')
-                                     || el.parentElement;
-                    // Find the scrolling element. NiceGUI q-scrollarea uses internal 'scroll' div.
-                    // We can try to find the .q-scrollarea__container which has scrollTop.
-                    // Actually, q-scrollarea manages scroll internally.
-                    // But usually setting scrollTop on the content wrapper works if overflow is set.
-                    // Let's try finding the scroll target that Quasar uses.
-                    const scrollTarget = el.closest('.q-scrollarea').querySelector('.q-scrollarea__container');
-                    if (scrollTarget) {
-                        scrollTarget.scrollTop = scrollTarget.scrollHeight;
+
+                let removedHeight = 0;
+                let countToRemove = el.childElementCount - maxLines;
+
+                if (countToRemove > 0) {
+                    // Calculate height of elements to be removed if we need to anchor
+                    if (!autoScroll && scrollTarget) {
+                        for(let i=0; i<countToRemove; i++) {
+                            removedHeight += el.children[i].offsetHeight;
+                        }
                     }
+
+                    while (el.childElementCount > maxLines) {
+                        el.firstElementChild.remove();
+                    }
+
+                    // Scroll Anchoring: Adjust scrollTop to compensate for removed elements
+                    if (!autoScroll && scrollTarget && removedHeight > 0) {
+                        scrollTarget.scrollTop -= removedHeight;
+                    }
+                }
+
+                if (autoScroll && scrollTarget) {
+                    scrollTarget.scrollTop = scrollTarget.scrollHeight;
                 }
             },
             setContent: function(id, html) {
@@ -491,10 +503,11 @@ class LogViewer:
                 ui.switch("Scroll", value=app_state.auto_scroll, on_change=self.on_autoscroll_change).tooltip("Auto-scroll")
 
             # Log Area (Grow to fill remaining space)
-            self.scroll_area = ui.scroll_area().classes('w-full grow bg-gray-50 p-4 select-text')
+            # Removed p-4 from scroll_area to avoid layout issues, moved to inner container
+            self.scroll_area = ui.scroll_area().classes('w-full grow bg-gray-50 select-text')
             with self.scroll_area:
                 # We use a div container with a specific ID for JS manipulation
-                self.log_container = ui.element('div').props(f'id="{self.log_container_id}"').classes('w-full flex flex-col select-text')
+                self.log_container = ui.element('div').props(f'id="{self.log_container_id}"').classes('w-full flex flex-col select-text p-4')
 
         # Start the update timer for this client (Slightly slower to batch updates)
         ui.timer(0.2, self.update_loop)

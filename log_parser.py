@@ -39,10 +39,11 @@ class LogParser:
     # Secondary Regex for System Logs: D Component: Message
     # ^([VDIWE]) -> Level
     # \s+
-    # (.*?): -> Component (mapped to File)
+    # (?:\(\d+\)\s+)? -> Optional timestamp like (1234)
+    # ([^\[\]\s:]+): -> Component (mapped to File) - No brackets, spaces or colons allowed
     # \s+
     # (.*)$ -> Message
-    REGEX_SYSTEM = re.compile(r'^([VDIWE])\s+(.*?):\s+(.*)$')
+    REGEX_SYSTEM = re.compile(r'^([VDIWE])\s+(?:\(\d+\)\s+)?([^\[\]\s:]+):\s+(.*)$')
 
     @staticmethod
     def parse(line: str) -> LogEntry:
