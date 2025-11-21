@@ -1,5 +1,7 @@
 import re
+import time
 from dataclasses import dataclass
+from typing import Optional
 
 @dataclass
 class LogEntry:
@@ -9,6 +11,7 @@ class LogEntry:
     function: str
     message: str
     original: str
+    arrival_time: float = 0.0
 
     def to_file_format(self) -> str:
         """
@@ -47,6 +50,8 @@ class LogParser:
         if not line:
             return None
 
+        now = time.time()
+
         # Try Standard ESP Log Format
         match = LogParser.REGEX.match(line)
         if match:
@@ -57,7 +62,8 @@ class LogParser:
                 # group 4 is line number, we skip it as per requirements
                 function=match.group(5),
                 message=match.group(6),
-                original=line
+                original=line,
+                arrival_time=now
             )
 
         # Try System Log Format
@@ -69,7 +75,8 @@ class LogParser:
                 file=match_sys.group(2),
                 function="UNDEFINED",
                 message=match_sys.group(3),
-                original=line
+                original=line,
+                arrival_time=now
             )
 
         # Fallback
@@ -79,5 +86,6 @@ class LogParser:
             file="UNDEFINED",
             function="UNDEFINED",
             message=line,
-            original=line
+            original=line,
+            arrival_time=now
         )

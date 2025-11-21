@@ -6,6 +6,8 @@ import threading
 import time
 import random
 import traceback
+import json
+import datetime
 from collections import deque
 
 # Global backend state (shared across clients)
@@ -25,10 +27,12 @@ class AppState:
         self.auto_reconnect = False
         self.save_to_file = False
         self.mock_mode = False
+        self.realtime_timestamp = False
 
 app_state = AppState()
 
 # We store all logs in a global list for persistence across page reloads
+global_lock = threading.Lock()
 global_logs = []
 unique_files = {"ALL"}
 unique_functions = {"ALL"}
@@ -38,12 +42,13 @@ def handle_log(entry: LogEntry):
     Callback from SerialManager.
     """
     global global_logs, unique_files, unique_functions
-    global_logs.append(entry)
+    with global_lock:
+        global_logs.append(entry)
 
-    if entry.file != "UNDEFINED":
-        unique_files.add(entry.file)
-    if entry.function != "UNDEFINED":
-        unique_functions.add(entry.function)
+        if entry.file != "UNDEFINED":
+            unique_files.add(entry.file)
+        if entry.function != "UNDEFINED":
+            unique_functions.add(entry.function)
 
 # Mock Generator
 def mock_log_generator():
@@ -105,10 +110,12 @@ class LogViewer:
         self.last_processed_index = 0
 
         # Track HTML strings for rolling window
+        # We keep this in sync with the DOM to handle refreshes
         self.html_logs = deque(maxlen=2000)
 
         # UI References
-        self.log_html = None
+        self.log_container_id = f"log-container-{id(self)}" # Unique ID for this viewer
+        self.log_container = None
         self.scroll_area = None
         self.file_select = None
         self.function_select = None
@@ -135,20 +142,24 @@ class LogViewer:
 
         # Check if client is still connected to avoid RuntimeError
         try:
-            # Simple keep-alive check. If accessing the container fails, we exit.
-            if not self.log_html or not self.log_html.client.has_socket_connection:
+            # Simple keep-alive check.
+            if not self.log_container or not self.log_container.client.has_socket_connection:
                  return
         except Exception:
             return
 
         try:
-            # If we have new logs
-            if len(global_logs) > self.last_processed_index:
-                new_entries = global_logs[self.last_processed_index:]
-                self.last_processed_index = len(global_logs)
+            # Thread-safe access to global logs
+            with global_lock:
+                current_len = len(global_logs)
 
-                # Update Dropdowns if needed
-                try:
+                # If we have new logs
+                if current_len > self.last_processed_index:
+                    new_entries = global_logs[self.last_processed_index:current_len]
+                    self.last_processed_index = current_len
+
+                    # Update Dropdowns if needed
+                    # Now protected by lock, so safe to iterate
                     if self.file_select:
                         current_opts = set(self.file_select.options)
                         if len(unique_files) > len(current_opts):
@@ -160,36 +171,43 @@ class LogViewer:
                         if len(unique_functions) > len(current_opts):
                             self.function_select.options = sorted(list(unique_functions))
                             self.function_select.update()
-                except RuntimeError:
-                    pass
 
-                # Filter new entries
+            # Filter new entries (outside lock if possible, but we copied the list logic above)
+            # Note: 'new_entries' is a slice (new list), so it's safe to use outside lock.
+            if 'new_entries' in locals() and new_entries:
                 matching_entries = [e for e in new_entries if self.matches_filter(e)]
 
                 if matching_entries:
+                    new_html_chunk = []
                     for entry in matching_entries:
                         html = self.format_log_html(entry)
                         self.html_logs.append(html)
+                        new_html_chunk.append(html)
 
-                    # Update the HTML content
-                    if self.log_html:
-                        self.log_html.content = "".join(self.html_logs)
+                    # JS Append
+                    if new_html_chunk:
+                        joined_html = "".join(new_html_chunk)
+                        # Use json.dumps to safely escape the HTML string for JS
+                        js_html = json.dumps(joined_html)
+                        cmd = f'window.logManager.append("{self.log_container_id}", {js_html}, 2000, {str(self.auto_scroll).lower()})'
+                        ui.run_javascript(cmd)
 
-                    if self.auto_scroll and self.scroll_area:
-                        self.scroll_area.scroll_to(percent=1.0)
         except Exception as e:
             print("Error in update_loop:")
             traceback.print_exc()
 
     def refresh_log_view(self):
         """Clears and rebuilds the log view based on current filters."""
-        if not self.log_html:
+        if not self.log_container:
             return
 
         self.html_logs.clear()
 
-        # Filter all global logs
-        matching = [l for l in global_logs if self.matches_filter(l)]
+        # Filter all global logs with lock
+        with global_lock:
+            current_len = len(global_logs)
+            matching = [l for l in global_logs if self.matches_filter(l)]
+            self.last_processed_index = current_len
 
         # Apply rolling window (start with the last 2000)
         initial_load = matching[-2000:]
@@ -197,15 +215,24 @@ class LogViewer:
         for entry in initial_load:
             self.html_logs.append(self.format_log_html(entry))
 
-        self.log_html.content = "".join(self.html_logs)
-
-        # Important: Update index so we don't duplicate these logs in the next update loop
-        self.last_processed_index = len(global_logs)
+        joined_html = "".join(self.html_logs)
+        js_html = json.dumps(joined_html)
+        # For full refresh, we replace content
+        cmd = f'window.logManager.setContent("{self.log_container_id}", {js_html})'
+        ui.run_javascript(cmd)
 
         if self.auto_scroll and self.scroll_area:
              self.scroll_area.scroll_to(percent=1.0)
 
     def format_log_html(self, entry: LogEntry) -> str:
+        # Timestamp logic
+        if app_state.realtime_timestamp:
+            # Format: MM:SS:mmm
+            dt = datetime.datetime.fromtimestamp(entry.arrival_time)
+            ts_str = dt.strftime("%M:%S:%f")[:-3]
+        else:
+            ts_str = entry.timestamp
+
         # Color coding
         color_class = "text-gray-800"
         if entry.level == "E": color_class = "text-red-600 font-bold"
@@ -215,9 +242,6 @@ class LogViewer:
         elif entry.level == "V": color_class = "text-gray-500"
 
         # Construct HTML string row
-        # Using Tailwind classes similar to before
-        # We use a div with flex/grid to mimic the layout
-
         file_str = f"[{entry.file}]" if entry.file != "UNDEFINED" else ""
         func_str = f"{entry.function}()" if entry.function != "UNDEFINED" else ""
 
@@ -226,7 +250,7 @@ class LogViewer:
 
         return f"""
         <div class="w-full flex gap-1 font-mono text-sm items-start no-wrap hover:bg-gray-100">
-            <div class="text-gray-400 w-16 shrink-0">[{entry.timestamp}]</div>
+            <div class="text-gray-400 w-20 shrink-0">[{ts_str}]</div>
             <div class="{color_class} w-8 shrink-0">[{entry.level}]</div>
             <div class="text-purple-600 w-48 shrink-0 truncate" title="{entry.file}">{file_str}</div>
             <div class="text-orange-600 w-40 shrink-0 truncate" title="{entry.function}">{func_str}</div>
@@ -254,11 +278,13 @@ class LogViewer:
 
     def on_clear_logs(self):
         global global_logs, unique_files, unique_functions
-        global_logs.clear()
+        with global_lock:
+            global_logs.clear()
 
         self.html_logs.clear()
-        if self.log_html:
-             self.log_html.content = ""
+        if self.log_container_id:
+             cmd = f'window.logManager.setContent("{self.log_container_id}", "")'
+             ui.run_javascript(cmd)
         self.last_processed_index = 0
 
     def on_connect_toggle(self, e):
@@ -368,22 +394,58 @@ class LogViewer:
             ui.separator().classes('my-4')
             ui.button("Clear Logs", on_click=self.on_clear_logs, color='red').classes('w-full')
 
-        # Main Content
-        with ui.column().classes('w-full h-screen p-0'):
-            # Toolbar
-            with ui.row().classes('w-full bg-white p-2 border-b items-center'):
+        # JS Injection for performance
+        ui.add_head_html("""
+        <script>
+        window.logManager = {
+            append: function(id, html, maxLines, autoScroll) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.insertAdjacentHTML('beforeend', html);
+                // Remove old children if needed
+                // Note: childElementCount is fast.
+                // Removing from start is O(N) in DOM, but for 2000 items it's instant.
+                while (el.childElementCount > maxLines) {
+                    el.firstElementChild.remove();
+                }
+                if (autoScroll) {
+                    const scrollArea = el.closest('.q-scrollarea__container')
+                                     || el.closest('.q-scrollarea__content')
+                                     || el.parentElement;
+                    // Find the scrolling element. NiceGUI q-scrollarea uses internal 'scroll' div.
+                    // We can try to find the .q-scrollarea__container which has scrollTop.
+                    // Actually, q-scrollarea manages scroll internally.
+                    // But usually setting scrollTop on the content wrapper works if overflow is set.
+                    // Let's try finding the scroll target that Quasar uses.
+                    const scrollTarget = el.closest('.q-scrollarea').querySelector('.q-scrollarea__container');
+                    if (scrollTarget) {
+                        scrollTarget.scrollTop = scrollTarget.scrollHeight;
+                    }
+                }
+            },
+            setContent: function(id, html) {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = html;
+            }
+        }
+        </script>
+        """)
+
+        # Main Content (Flex Column with constrained height)
+        with ui.column().classes('w-full h-screen p-0 overflow-hidden no-wrap'):
+            # Toolbar (Fixed height)
+            with ui.row().classes('w-full bg-white p-2 border-b items-center shrink-0'):
                 ui.button(icon='menu', on_click=drawer.toggle).props('flat round dense')
                 ui.label("Log Output").classes('text-xl ml-2')
                 ui.space()
-                ui.switch("Auto-scroll", value=True, on_change=self.on_autoscroll_change)
+                ui.switch("Time", value=app_state.realtime_timestamp, on_change=lambda e: setattr(app_state, 'realtime_timestamp', e.value)).tooltip("Real-time Timestamp")
+                ui.switch("Scroll", value=app_state.auto_scroll, on_change=self.on_autoscroll_change).tooltip("Auto-scroll")
 
-            # Log Area
-            self.scroll_area = ui.scroll_area().classes('w-full h-full bg-gray-50 p-4')
+            # Log Area (Grow to fill remaining space)
+            self.scroll_area = ui.scroll_area().classes('w-full grow bg-gray-50 p-4')
             with self.scroll_area:
-                # We use a single HTML element for better performance
-                # sanitize=False is required in newer/specific versions and better for performance
-                # since we manually sanitize the input.
-                self.log_html = ui.html('', sanitize=False).classes('w-full')
+                # We use a div container with a specific ID for JS manipulation
+                self.log_container = ui.element('div').props(f'id="{self.log_container_id}"').classes('w-full flex flex-col')
 
         # Start the update timer for this client (Slightly slower to batch updates)
         ui.timer(0.2, self.update_loop)
