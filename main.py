@@ -20,9 +20,10 @@ class AppState:
     def __init__(self):
         self.port = None
         self.baud = 115200
-        self.filter_level = "ALL"
-        self.filter_file = ["ALL"] # Changed to list for multi-select
-        self.filter_function = "ALL"
+        # Level defaults to all specific levels selected (explicit list)
+        self.filter_level = ["V", "D", "I", "W", "E", "U"]
+        self.filter_file = ["ALL"]
+        self.filter_function = ["ALL"] # Changed to list
         self.auto_scroll = True
         self.auto_reconnect = False
         self.save_to_file = False
@@ -125,18 +126,20 @@ class LogViewer:
         self.connect_switch = None
 
     def matches_filter(self, entry: LogEntry) -> bool:
-        if self.filter_level != "ALL" and entry.level != self.filter_level:
+        # Level Logic: Standard multi-select (no ALL token needed as list is static)
+        if entry.level not in self.filter_level:
             return False
 
-        # Multi-select logic for file
-        # If "ALL" is in the list, we show everything.
-        # Otherwise, we check if entry.file is in the list.
+        # File Logic: Dynamic list with "ALL" token
         if "ALL" not in self.filter_file:
             if entry.file not in self.filter_file:
                 return False
 
-        if self.filter_function != "ALL" and entry.function != self.filter_function:
-            return False
+        # Function Logic: Dynamic list with "ALL" token
+        if "ALL" not in self.filter_function:
+            if entry.function not in self.filter_function:
+                return False
+
         return True
 
     async def update_loop(self):
@@ -264,38 +267,38 @@ class LogViewer:
         </div>
         """
 
-    def on_file_filter_change(self, e):
-        # Smart logic for "ALL" vs specific selection
-        new_val = e.value
+    def _handle_smart_all_selection(self, new_val, current_val, ui_element):
+        """Helper for File/Function filters to manage 'ALL' vs Specifics."""
+        result = new_val
         if not new_val:
             # Empty -> Default to ALL
-            self.filter_file = ["ALL"]
-            self.file_select.value = ["ALL"]
+            result = ["ALL"]
+            ui_element.value = ["ALL"]
         else:
             # If "ALL" was present and we added something else, remove "ALL"
-            if "ALL" in self.filter_file and len(new_val) > len(self.filter_file):
-                # User added a specific item, remove ALL
-                new_val = [x for x in new_val if x != "ALL"]
-                self.file_select.value = new_val
+            if "ALL" in current_val and len(new_val) > len(current_val):
+                result = [x for x in new_val if x != "ALL"]
+                ui_element.value = result
             # If something else was present and we selected "ALL", remove others
-            elif "ALL" not in self.filter_file and "ALL" in new_val:
-                # User clicked ALL, clear others
-                new_val = ["ALL"]
-                self.file_select.value = new_val
+            elif "ALL" not in current_val and "ALL" in new_val:
+                result = ["ALL"]
+                ui_element.value = result
+        return result
 
-            self.filter_file = new_val
-
+    def on_file_filter_change(self, e):
+        self.filter_file = self._handle_smart_all_selection(e.value, self.filter_file, self.file_select)
         app_state.filter_file = self.filter_file
         self.refresh_log_view()
 
-    def on_filter_change(self):
-        self.filter_level = self.level_select.value
-        self.filter_function = self.function_select.value
-
-        # Save to app state
-        app_state.filter_level = self.filter_level
+    def on_function_filter_change(self, e):
+        self.filter_function = self._handle_smart_all_selection(e.value, self.filter_function, self.function_select)
         app_state.filter_function = self.filter_function
+        self.refresh_log_view()
 
+    def on_level_filter_change(self, e):
+        # Level is simple multi-select
+        self.filter_level = e.value
+        app_state.filter_level = self.filter_level
         self.refresh_log_view()
 
     def on_autoscroll_change(self, e):
@@ -398,13 +401,22 @@ class LogViewer:
             ui.separator().classes('my-2')
             ui.label("Filters").classes('text-lg font-bold')
 
-            self.level_select = ui.select(
-                options=["ALL", "V", "D", "I", "W", "E", "U"],
-                value=app_state.filter_level,
-                label="Level",
-                on_change=self.on_filter_change
-            ).classes('w-full')
+            # Level Filter with Clear/Select All
+            with ui.row().classes('w-full items-center no-wrap'):
+                self.level_select = ui.select(
+                    options=["V", "D", "I", "W", "E", "U"],
+                    value=app_state.filter_level,
+                    label="Level",
+                    multiple=True,
+                    on_change=self.on_level_filter_change
+                ).classes('grow').props('use-chips')
+                # Helper buttons for Level
+                with ui.button(icon='select_all', on_click=lambda: self.level_select.set_value(["V", "D", "I", "W", "E", "U"])).props('flat dense round').tooltip("Select All"):
+                    pass
+                with ui.button(icon='clear', on_click=lambda: self.level_select.set_value([])).props('flat dense round color=red').tooltip("Clear Selection"):
+                    pass
 
+            # File Filter
             self.file_select = ui.select(
                 options=sorted(list(unique_files)),
                 value=app_state.filter_file,
@@ -413,12 +425,14 @@ class LogViewer:
                 on_change=self.on_file_filter_change
             ).classes('w-full').props('use-chips')
 
+            # Function Filter
             self.function_select = ui.select(
                 options=sorted(list(unique_functions)),
                 value=app_state.filter_function,
                 label="Function",
-                on_change=self.on_filter_change
-            ).classes('w-full')
+                multiple=True,
+                on_change=self.on_function_filter_change
+            ).classes('w-full').props('use-chips')
 
             ui.separator().classes('my-4')
             ui.button("Clear Logs", on_click=self.on_clear_logs, color='red').classes('w-full')
