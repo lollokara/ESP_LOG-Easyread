@@ -10,13 +10,6 @@ import json
 import datetime
 from collections import deque
 import fnmatch
-import os
-
-# Try importing pyi_splash (only available in bundled app)
-try:
-    import pyi_splash
-except ImportError:
-    pyi_splash = None
 
 # Global backend state (shared across clients)
 serial_manager = None
@@ -37,7 +30,7 @@ class AppState:
         self.save_to_file = False
         self.mock_mode = False
         self.realtime_timestamp = False
-
+        
         # New Features
         self.search_term = ""
         self.cli_history = []
@@ -50,6 +43,7 @@ class AppState:
             "function": True,
             "message": True
         }
+        self.dark_mode = False # Persist dark mode preference
 
 app_state = AppState()
 
@@ -128,38 +122,27 @@ class LogViewer:
         self.filter_file = app_state.filter_file
         self.filter_function = app_state.filter_function
         self.auto_scroll = app_state.auto_scroll
-
+        
         # Local copies for fast access, synced with AppState
         self.search_term = app_state.search_term
         self.font_size = app_state.font_size
         self.visible_columns = app_state.visible_columns.copy()
+        
+        # CLI History Tracking
+        self.history_index = -1 # -1 means new command mode
 
         self.last_processed_index = 0
 
         # Track HTML strings for rolling window
-        # We keep this in sync with the DOM to handle refreshes
-        # Now we have two lists: Primary (Matched) and Secondary (Dimmed)
-        # Wait, rolling window logic gets complicated with two lists.
-        # If we append to bottom of page, we are essentially just appending.
-        # But the requirement is "outside current filters ... appear at the bottom greyed out".
-        # This implies a separate section.
-        # Let's maintain ONE main list for the rolling window, but rendering might differ?
-        # No, "appear at the bottom" suggests a separate container if we want them grouped.
-        # However, strictly chronologically, they are interspersed.
-        # "appear at the bottom" is a spatial instruction.
-        # Interpretation:
-        # Top Section: [Filter MATCH] + [Search MATCH]
-        # Bottom Section: [Filter FAIL] + [Search MATCH] (Dimmed)
-
         self.html_logs_primary = deque(maxlen=2000)
-        self.html_logs_secondary = deque(maxlen=500) # Keep fewer of these maybe?
+        self.html_logs_secondary = deque(maxlen=500) 
 
         # UI References
         self.log_container_id_primary = f"log-container-primary-{id(self)}"
         self.log_container_id_secondary = f"log-container-secondary-{id(self)}"
         self.log_container_primary = None
         self.log_container_secondary = None
-
+        
         self.scroll_area = None
         self.file_select = None
         self.function_select = None
@@ -168,6 +151,7 @@ class LogViewer:
         self.baud_select = None
         self.connect_switch = None
         self.cli_input = None
+        self.dark_mode_toggle = None
 
     def check_match(self, entry: LogEntry):
         """
@@ -176,7 +160,7 @@ class LogViewer:
         1: PRIMARY (Matches Filters AND Search)
         2: SECONDARY (Matches Search BUT Fails Filters)
         """
-
+        
         # 1. Check Search (Base requirement for visibility)
         matches_search = True
         if self.search_term:
@@ -184,20 +168,20 @@ class LogViewer:
             # "search the entire logs" -> usually implies original raw line
             text_to_search = entry.original.lower()
             pattern = self.search_term.lower()
-
+            
             if '*' in pattern or '?' in pattern:
                  if not fnmatch.fnmatch(text_to_search, f"*{pattern}*"): # Add wildcards for 'contains' logic
                       matches_search = False
             else:
                  if pattern not in text_to_search:
                       matches_search = False
-
+        
         if not matches_search:
             return 0
-
+            
         # 2. Check Filters
         matches_filters = True
-
+        
         # Level
         if entry.level not in self.filter_level:
             matches_filters = False
@@ -211,7 +195,7 @@ class LogViewer:
         if "ALL" not in self.filter_function:
             if entry.function not in self.filter_function:
                 matches_filters = False
-
+                
         if matches_filters:
             return 1
         else:
@@ -259,7 +243,7 @@ class LogViewer:
             if 'new_entries' in locals() and new_entries:
                 primary_chunk = []
                 secondary_chunk = []
-
+                
                 for entry in new_entries:
                     match_status = self.check_match(entry)
                     if match_status == 1:
@@ -289,13 +273,13 @@ class LogViewer:
                     # If we are auto-scrolling, the secondary container is at the bottom of the scroll area anyway.
                     cmd = f'window.logManager.append("{self.log_container_id_secondary}", {js_html}, 500, false)' # Less buffer for secondary
                     ui.run_javascript(cmd)
-
-                    # If autoscroll is ON, we need to scroll the parent scroll_area to bottom
-                    if self.auto_scroll and self.scroll_area:
-                        # We do this via JS in the append function usually, but since we have two containers,
-                        # the JS function targets the container's parent.
-                        # Calling it for primary usually handles it, but if only secondary added?
-                        pass
+                    
+                    # If autoscroll is ON and we added items to secondary but NOT primary, 
+                    # we still need to force the scroll to bottom because the secondary area expanded.
+                    # The primary logic handles it above if primary_chunk is true.
+                    # If primary_chunk is empty but secondary_chunk has data, we need to scroll.
+                    if not primary_chunk and self.auto_scroll and self.scroll_area:
+                        self.scroll_area.scroll_to(percent=1.0)
 
         except Exception as e:
             print("Error in update_loop:")
@@ -312,7 +296,7 @@ class LogViewer:
         # Filter all global logs with lock
         with global_lock:
             current_len = len(global_logs)
-
+            
             # Re-process all logs
             # Optimization: If list is huge, this might be slow. But strictly needed for search/filter changes.
             # Limit to last 3000?
@@ -362,41 +346,43 @@ class LogViewer:
         # Font size class is handled by parent container class or we inject inline style?
         # Tailwind arbitrary values for font size: text-[14px]
         font_style = f"font-size: {self.font_size}px;"
-
-        color_class = "text-gray-800"
-        if entry.level == "E": color_class = "text-red-600 font-bold"
-        elif entry.level == "W": color_class = "text-yellow-600"
-        elif entry.level == "I": color_class = "text-green-600"
-        elif entry.level == "D": color_class = "text-blue-600"
-        elif entry.level == "V": color_class = "text-gray-500"
+        
+        # Adaptive colors for Light/Dark mode
+        # Using standard Tailwind colors that look okay on both or specific dark variants
+        color_class = "text-gray-800 dark:text-gray-200"
+        if entry.level == "E": color_class = "text-red-600 dark:text-red-400 font-bold"
+        elif entry.level == "W": color_class = "text-yellow-600 dark:text-yellow-400"
+        elif entry.level == "I": color_class = "text-green-600 dark:text-green-400"
+        elif entry.level == "D": color_class = "text-blue-600 dark:text-blue-400"
+        elif entry.level == "V": color_class = "text-gray-500 dark:text-gray-400"
 
         # Sanitize message
         safe_msg = entry.message.replace("<", "&lt;").replace(">", "&gt;")
-
+        
         # Columns Construction
         cols = []
-
+        
         if self.visible_columns.get("timestamp", True):
             cols.append(f'<div class="text-gray-400 w-24 shrink-0">[{ts_str}]</div>')
-
+        
         if self.visible_columns.get("level", True):
             cols.append(f'<div class="{color_class} w-8 shrink-0">[{entry.level}]</div>')
-
+            
         if self.visible_columns.get("file", True):
             file_str = f"[{entry.file}]" if entry.file != "UNDEFINED" else ""
-            cols.append(f'<div class="text-purple-600 w-48 shrink-0 truncate" title="{entry.file}">{file_str}</div>')
-
+            cols.append(f'<div class="text-purple-600 dark:text-purple-400 w-48 shrink-0 truncate" title="{entry.file}">{file_str}</div>')
+            
         if self.visible_columns.get("function", True):
             func_str = f"{entry.function}()" if entry.function != "UNDEFINED" else ""
-            cols.append(f'<div class="text-orange-600 w-40 shrink-0 truncate" title="{entry.function}">{func_str}</div>')
-
+            cols.append(f'<div class="text-orange-600 dark:text-orange-400 w-40 shrink-0 truncate" title="{entry.function}">{func_str}</div>')
+            
         if self.visible_columns.get("message", True):
             cols.append(f'<div class="{color_class} grow break-all select-text">{safe_msg}</div>')
 
         inner_html = "".join(cols)
 
         return f"""
-        <div class="log-line w-full flex gap-1 font-mono items-start no-wrap hover:bg-gray-100 select-text {base_opacity}" style="{font_style}">
+        <div class="log-line w-full flex gap-1 font-mono items-start no-wrap hover:bg-gray-100 dark:hover:bg-slate-800 select-text {base_opacity}" style="{font_style}">
             {inner_html}
         </div>
         """
@@ -440,12 +426,12 @@ class LogViewer:
         self.search_term = e.value
         app_state.search_term = e.value
         self.refresh_log_view()
-
+        
     def on_font_size_change(self, delta):
         self.font_size = max(8, min(30, self.font_size + delta))
         app_state.font_size = self.font_size
         self.refresh_log_view() # Need to re-render to apply inline styles
-
+        
     def on_column_toggle(self, col_name, value):
         self.visible_columns[col_name] = value
         app_state.visible_columns = self.visible_columns
@@ -467,7 +453,7 @@ class LogViewer:
     def on_connect_toggle(self, e):
         port = self.port_select.value
         baud = int(self.baud_select.value)
-        if e.value:
+        if e.value: 
             app_state.port = port
             app_state.baud = baud
             if serial_manager.connect(port, baud):
@@ -475,7 +461,7 @@ class LogViewer:
             else:
                  ui.notify(f"Failed to connect to {port}", type='negative')
                  self.connect_switch.value = False
-        else:
+        else: 
             serial_manager.disconnect()
             ui.notify("Disconnected")
 
@@ -498,26 +484,29 @@ class LogViewer:
             ui.notify("Mock Mode Stopped")
             if self.connect_switch:
                 self.connect_switch.enable()
-
+                
     def send_cli_command(self):
         cmd = self.cli_input.value
         if not cmd: return
-
+        
         # Add to history
         if not app_state.cli_history or app_state.cli_history[-1] != cmd:
             app_state.cli_history.append(cmd)
             # Keep history reasonable
             if len(app_state.cli_history) > 50:
                 app_state.cli_history.pop(0)
-
+        
+        # Reset history index
+        self.history_index = -1
+        
         # Determine line ending
         ending = ""
         if app_state.cli_line_ending == "LF": ending = "\n"
         elif app_state.cli_line_ending == "CR": ending = "\r"
         elif app_state.cli_line_ending == "CRLF": ending = "\r\n"
-
+        
         full_cmd = cmd + ending
-
+        
         if serial_manager and serial_manager.is_connected:
             serial_manager.write(full_cmd.encode('utf-8'))
             ui.notify(f"Sent: {cmd}")
@@ -525,20 +514,32 @@ class LogViewer:
              ui.notify(f"Mock Sent: {cmd}")
         else:
             ui.notify("Not Connected", type='warning')
-
+            
         self.cli_input.value = ""
 
     def build_ui(self):
+        # Initialize Dark Mode
+        self.dark_mode = ui.dark_mode()
+        self.dark_mode.value = app_state.dark_mode
+
         # Header / Sidebar
-        with ui.left_drawer(value=True).classes('bg-slate-100 q-pa-md') as drawer:
-            ui.markdown("### ESP32 Monitor")
+        # Header / Sidebar
+        # Fix: Bind background class to dark mode state explicitly or use a container that updates
+        drawer_bg = self.dark_mode.bind_value(app_state, 'dark_mode').map(lambda x: 'bg-slate-800' if x else 'bg-slate-100')
+        
+        with ui.left_drawer(value=True).classes('q-pa-md').bind_classes_from(self.dark_mode, 'value', 
+                                                                           {True: 'bg-slate-800', False: 'bg-slate-100'}) as drawer:
+            ui.markdown("### SerialLens").classes('dark:text-white')
 
             # --- Appearance ---
             ui.label("Appearance").classes('text-xs font-bold text-gray-500 mt-2')
-
+            
+            # Dark Mode Toggle
+            ui.switch("Dark Mode", value=self.dark_mode.value, on_change=lambda e: self._on_dark_mode_change(e)).classes('w-full')
+            
             # Font Scale
             with ui.row().classes('w-full items-center justify-between'):
-                ui.label("Font Size")
+                ui.label("Font Size").classes('dark:text-gray-300')
                 with ui.row().classes('gap-1'):
                     ui.button("-", on_click=lambda: self.on_font_size_change(-1)).props('dense round flat')
                     ui.button("+", on_click=lambda: self.on_font_size_change(1)).props('dense round flat')
@@ -557,7 +558,7 @@ class LogViewer:
 
             self.port_select = ui.select(options=ports, value=current_port, label="Port").classes('w-full')
             ui.button("Refresh", on_click=self.on_refresh_ports).classes('w-full mb-2 text-xs').props('dense outline')
-
+            
             self.baud_select = ui.select(
                 options=[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600],
                 value=app_state.baud,
@@ -613,6 +614,12 @@ class LogViewer:
             ui.separator().classes('my-4')
             ui.button("Clear Logs", on_click=self.on_clear_logs, color='red').classes('w-full')
 
+    def _on_dark_mode_change(self, e):
+        self.dark_mode.value = e.value
+        app_state.dark_mode = e.value
+        # Force refresh logs to apply new colors
+        self.refresh_log_view()
+
         # JS Injection
         ui.add_head_html("""
         <style>
@@ -661,12 +668,13 @@ class LogViewer:
         """)
 
         # Main Layout
-        with ui.column().classes('w-full h-screen p-0 overflow-hidden no-wrap'):
-
+        # Fix: Revert absolute positioning, use standard flex column that fills screen
+        with ui.column().classes('w-full h-screen p-0 overflow-hidden no-wrap bg-white dark:bg-slate-900'):
+            
             # --- Top Toolbar ---
-            with ui.row().classes('w-full bg-white p-2 border-b items-center shrink-0 gap-2'):
+            with ui.row().classes('w-full bg-white dark:bg-slate-800 p-2 border-b dark:border-slate-700 items-center shrink-0 gap-2'):
                 ui.button(icon='menu', on_click=drawer.toggle).props('flat round dense')
-
+                
                 # Search Bar (Top Center/Left)
                 with ui.input(placeholder="Search logs... (* ?)", on_change=self.on_search_change).classes('grow').props('dense outlined rounded') as search:
                     search.value = self.search_term
@@ -679,46 +687,60 @@ class LogViewer:
                 ui.switch("Scroll", value=app_state.auto_scroll, on_change=self.on_autoscroll_change).props('dense').tooltip("Auto-scroll")
 
             # --- Log Area ---
-            self.scroll_area = ui.scroll_area().classes('w-full grow bg-gray-50 select-text')
+            self.scroll_area = ui.scroll_area().classes('w-full grow bg-gray-50 dark:bg-slate-900 select-text')
             with self.scroll_area:
                 with ui.column().classes('w-full min-h-full'):
                     # Primary Container (Active Logs)
                     self.log_container_primary = ui.element('div').props(f'id="{self.log_container_id_primary}"').classes('w-full flex flex-col select-text p-2')
-
+                    
                     # Separator (if we have secondary logs logic, though dynamically they appear here)
                     ui.separator().classes('my-4 opacity-30')
-
+                    
                     # Secondary Container (Dimmed/Hidden Logs)
                     ui.label("Filtered Matches (Search Only)").classes('text-xs text-gray-400 ml-2')
-                    self.log_container_secondary = ui.element('div').props(f'id="{self.log_container_id_secondary}"').classes('w-full flex flex-col select-text p-2 bg-gray-100 border-t')
+                    self.log_container_secondary = ui.element('div').props(f'id="{self.log_container_id_secondary}"').classes('w-full flex flex-col select-text p-2 bg-gray-100 dark:bg-slate-800 border-t dark:border-slate-700')
 
             # --- Footer (CLI) ---
-            with ui.row().classes('w-full bg-white p-2 border-t items-center shrink-0 gap-2'):
+            with ui.row().classes('w-full bg-white dark:bg-slate-800 p-2 border-t dark:border-slate-700 items-center shrink-0 gap-2'):
                 ui.icon('terminal').classes('text-gray-500')
-
+                
+                # CLI Input
                 # CLI Input
                 self.cli_input = ui.input(placeholder="Send command...", on_change=None).classes('grow').props('dense outlined')
+                # Fix: Ensure handler is properly registered. 
+                # Note: 'keydown.enter' on input sometimes needs prevent_default if it submits a form, but here it's standalone.
                 self.cli_input.on('keydown.enter', self.send_cli_command)
-                # History handlers (Basic)
-                # ui.input doesn't expose easy keydown for specific keys like up/down without some js or custom events?
-                # NiceGUI 1.4+ supports key modifiers.
-                # We can use on('keydown.up', ...)
-
-                def navigate_history(delta):
+                
+                # History handlers
+                def handle_up():
                     if not app_state.cli_history: return
-                    # Simple history implementation: just cycle last one or use an index if we want to be fancy
-                    # For now, just populate the last command
-                    self.cli_input.value = app_state.cli_history[-1]
+                    if self.history_index == -1:
+                        self.history_index = len(app_state.cli_history) - 1
+                    else:
+                        self.history_index = max(0, self.history_index - 1)
+                    self.cli_input.value = app_state.cli_history[self.history_index]
 
-                self.cli_input.on('keydown.up', lambda: navigate_history(-1))
-
+                def handle_down():
+                    if not app_state.cli_history: return
+                    if self.history_index == -1: return # Already at bottom
+                    
+                    self.history_index += 1
+                    if self.history_index >= len(app_state.cli_history):
+                        self.history_index = -1
+                        self.cli_input.value = ""
+                    else:
+                        self.cli_input.value = app_state.cli_history[self.history_index]
+                
+                self.cli_input.on('keydown.up', handle_up)
+                self.cli_input.on('keydown.down', handle_down)
+                
                 # Line Ending
                 ui.select(
                     options=["LF", "CR", "CRLF"],
                     value=app_state.cli_line_ending,
                     on_change=lambda e: setattr(app_state, 'cli_line_ending', e.value)
                 ).props('dense options-dense borderless').classes('w-20')
-
+                
                 ui.button(icon='send', on_click=self.send_cli_command).props('flat round dense color=primary')
 
         # Start timer
@@ -733,22 +755,13 @@ def main_page(client: Client):
     viewer = LogViewer()
     viewer.build_ui()
 
-# Splash Screen Close
-def startup():
-    if pyi_splash:
-        try:
-            pyi_splash.close()
-        except:
-            pass
-
-app.on_startup(startup)
-
 if __name__ in {"__main__", "__mp_main__"}:
     import sys
     is_bundled = getattr(sys, 'frozen', False)
     ui.run(
-        title="ESP32 Serial Monitor",
+        title="SerialLens",
         port=8080,
         reload=False,
-        native=is_bundled
+        native=is_bundled,
+        window_size=(1000, 800) # Fix for default window size being too small
     )
