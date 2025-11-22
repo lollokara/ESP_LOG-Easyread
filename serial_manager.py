@@ -24,6 +24,10 @@ class SerialManager:
         ports = serial.tools.list_ports.comports()
         return [p.device for p in ports]
 
+    def write(self, data: bytes):
+        if self.is_connected and self.serial_port and self.serial_port.is_open:
+            self.serial_port.write(data)
+
     def connect(self, port: str, baud: int):
         if self.is_connected:
             self.disconnect()

@@ -376,33 +376,22 @@ class LogViewer:
         ending = {"LF": "\n", "CR": "\r", "CRLF": "\r\n"}.get(app_state.cli_line_ending, "\n")
         full_cmd = cmd + ending
         if serial_manager and serial_manager.is_connected:
-            serial_manager.write(full_cmd.encode('utf-8'))
-            ui.notify(f"Sent: {cmd}")
-        elif mock_mode: ui.notify(f"Mock Sent: {cmd}")
-        else: ui.notify("Not Connected", type='warning')
-        self.cli_input.value = ""
+            try:
+                serial_manager.write(full_cmd.encode('utf-8'))
+                ui.notify(f"Sent: {cmd}")
+                self.cli_input.value = ""
+            except Exception as e:
+                ui.notify(f"Error sending: {e}", type='negative')
+        elif mock_mode:
+            ui.notify(f"Mock Sent: {cmd}")
+            self.cli_input.value = ""
+        else:
+            ui.notify("Not Connected", type='warning')
+            # Keep input text
 
     def on_theme_change(self, e):
-        self.current_theme = e.value
         app_state.current_theme = e.value
-        theme = self.get_theme()
-
-        # Sync Quasar Dark Mode
-        ui.run_javascript(f'Quasar.Dark.set({str(self.current_theme != "Light").lower()})')
-
-        # Update Main Layout
-        self.main_column.classes(replace=f"w-full h-screen p-0 overflow-hidden no-wrap {theme['bg_main']} {theme['text_primary']}")
-        self.drawer.classes(replace=f"q-pa-md {theme['bg_sidebar']} {theme['text_primary']} transition-all duration-300 border-r {theme['border']}")
-        self.header_row.classes(replace=f"w-full {theme['bg_header']} p-2 border-b {theme['border']} items-center shrink-0 gap-2 transition-colors duration-300")
-        self.footer_row.classes(replace=f"w-full {theme['bg_header']} p-2 border-t {theme['border']} items-center shrink-0 gap-2")
-        self.scroll_area.classes(replace=f"w-full grow {theme['log_bg']} select-text")
-        self.log_container_secondary.classes(replace=f"w-full flex flex-col select-text p-2 {theme['bg_sidebar']} border-t {theme['border']}")
-
-        # Update Controls
-        for inp in self.inputs: inp.classes(replace=f"grow {theme['bg_input']} {theme['text_primary']}").props('dense outlined square')
-        for sel in self.selects: sel.classes(replace=f"w-full {theme['bg_input']} {theme['text_primary']}").props('dense outlined')
-        
-        self.refresh_log_view()
+        ui.run_javascript('location.reload()')
 
     def build_ui(self):
         # Initialize Quasar Dark Mode via JS to avoid Python boolean injection bug
@@ -533,7 +522,6 @@ class LogViewer:
                 self.inputs.append(self.cli_input)
                 # Bind Enter Key Robustly
                 self.cli_input.on('keydown.enter', self.send_cli_command)
-                self.cli_input.on('keyup.enter', self.send_cli_command) # Add keyup as backup
 
                 def handle_up():
                     if not app_state.cli_history: return
@@ -557,6 +545,7 @@ class LogViewer:
 
 @ui.page('/')
 def main_page(client: Client):
+    client.content.classes('p-0 m-0 gap-0')
     global serial_manager
     if serial_manager is None: serial_manager = SerialManager(on_log_received=handle_log)
     viewer = LogViewer()
