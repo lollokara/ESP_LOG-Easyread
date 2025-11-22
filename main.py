@@ -209,13 +209,13 @@ class LogViewer:
                 if primary_chunk:
                     joined_html = "".join(primary_chunk)
                     js_html = json.dumps(joined_html)
-                    cmd = f'window.logManager.append("{self.log_container_id_primary}", {js_html}, 2000, {str(self.auto_scroll).lower()})'
+                    cmd = f'if(window.logManager) window.logManager.append("{self.log_container_id_primary}", {js_html}, 2000, {str(self.auto_scroll).lower()})'
                     ui.run_javascript(cmd)
 
                 if secondary_chunk:
                     joined_html = "".join(secondary_chunk)
                     js_html = json.dumps(joined_html)
-                    cmd = f'window.logManager.append("{self.log_container_id_secondary}", {js_html}, 500, false)'
+                    cmd = f'if(window.logManager) window.logManager.append("{self.log_container_id_secondary}", {js_html}, 500, false)'
                     ui.run_javascript(cmd)
                     if not primary_chunk and self.auto_scroll and self.scroll_area:
                         self.scroll_area.scroll_to(percent=1.0)
@@ -240,10 +240,10 @@ class LogViewer:
         while len(self.html_logs_secondary) > 500: self.html_logs_secondary.popleft()
         joined_html_p = "".join(self.html_logs_primary)
         js_html_p = json.dumps(joined_html_p)
-        ui.run_javascript(f'window.logManager.setContent("{self.log_container_id_primary}", {js_html_p})')
+        ui.run_javascript(f'if(window.logManager) window.logManager.setContent("{self.log_container_id_primary}", {js_html_p})')
         joined_html_s = "".join(self.html_logs_secondary)
         js_html_s = json.dumps(joined_html_s)
-        ui.run_javascript(f'window.logManager.setContent("{self.log_container_id_secondary}", {js_html_s})')
+        ui.run_javascript(f'if(window.logManager) window.logManager.setContent("{self.log_container_id_secondary}", {js_html_s})')
         if self.auto_scroll and self.scroll_area: self.scroll_area.scroll_to(percent=1.0)
 
     def format_log_html(self, entry: LogEntry, dimmed: bool = False) -> str:
@@ -330,8 +330,8 @@ class LogViewer:
         with global_lock: global_logs.clear()
         self.html_logs_primary.clear()
         self.html_logs_secondary.clear()
-        if self.log_container_primary: ui.run_javascript(f'window.logManager.setContent("{self.log_container_id_primary}", "")')
-        if self.log_container_secondary: ui.run_javascript(f'window.logManager.setContent("{self.log_container_id_secondary}", "")')
+        if self.log_container_primary: ui.run_javascript(f'if(window.logManager) window.logManager.setContent("{self.log_container_id_primary}", "")')
+        if self.log_container_secondary: ui.run_javascript(f'if(window.logManager) window.logManager.setContent("{self.log_container_id_secondary}", "")')
         self.last_processed_index = 0
 
     def on_connect_toggle(self, e):
@@ -388,7 +388,7 @@ class LogViewer:
         theme = self.get_theme()
 
         # Sync Quasar Dark Mode
-        ui.dark_mode().value = (self.current_theme != "Light")
+        ui.run_javascript(f'Quasar.Dark.set({str(self.current_theme != "Light").lower()})')
 
         # Update Main Layout
         self.main_column.classes(replace=f"w-full h-screen p-0 overflow-hidden no-wrap {theme['bg_main']} {theme['text_primary']}")
@@ -399,14 +399,14 @@ class LogViewer:
         self.log_container_secondary.classes(replace=f"w-full flex flex-col select-text p-2 {theme['bg_sidebar']} border-t {theme['border']}")
 
         # Update Controls
-        for inp in self.inputs: inp.classes(replace=f"grow {theme['bg_input']}").props('dense outlined square')
-        for sel in self.selects: sel.classes(replace=f"w-full {theme['bg_input']}").props('dense outlined')
+        for inp in self.inputs: inp.classes(replace=f"grow {theme['bg_input']} {theme['text_primary']}").props('dense outlined square')
+        for sel in self.selects: sel.classes(replace=f"w-full {theme['bg_input']} {theme['text_primary']}").props('dense outlined')
         
         self.refresh_log_view()
 
     def build_ui(self):
-        # Initialize Quasar Dark Mode based on initial theme
-        ui.dark_mode().value = (self.current_theme != "Light")
+        # Initialize Quasar Dark Mode via JS to avoid Python boolean injection bug
+        is_dark = str(self.current_theme != "Light").lower()
 
         theme = self.get_theme()
         ui.add_head_html("""
@@ -449,11 +449,14 @@ class LogViewer:
         </script>
         """)
 
+        # Force correct dark mode on load
+        ui.run_javascript(f'Quasar.Dark.set({is_dark})')
+
         # 1. Drawer defined at top level
         with ui.left_drawer(value=True).classes(f"q-pa-md {theme['bg_sidebar']} {theme['text_primary']} transition-all duration-300 border-r {theme['border']}") as self.drawer:
             ui.markdown("### SerialLens").classes('font-bold')
             ui.label("Appearance").classes(f"text-xs font-bold mt-4")
-            self.selects.append(ui.select(options=list(THEMES.keys()), value=self.current_theme, label="Theme", on_change=self.on_theme_change))
+            self.selects.append(ui.select(options=list(THEMES.keys()), value=self.current_theme, label="Theme", on_change=self.on_theme_change).classes(f"w-full {theme['bg_input']} {theme['text_primary']}"))
             
             with ui.row().classes('w-full items-center justify-between mt-2'):
                 ui.label("Font Size")
@@ -470,10 +473,10 @@ class LogViewer:
 
             ports = serial_manager.list_ports()
             current_port = app_state.port if app_state.port in ports else (ports[0] if ports else None)
-            self.port_select = ui.select(options=ports, value=current_port, label="Port").classes(f"w-full {theme['bg_input']}").props('dense outlined')
+            self.port_select = ui.select(options=ports, value=current_port, label="Port").classes(f"w-full {theme['bg_input']} {theme['text_primary']}").props('dense outlined')
             self.selects.append(self.port_select)
             ui.button("Refresh", on_click=self.on_refresh_ports).classes(f"w-full mb-2 text-xs border").props('dense square outline')
-            self.baud_select = ui.select(options=[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600], value=app_state.baud, label="Baud")
+            self.baud_select = ui.select(options=[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600], value=app_state.baud, label="Baud").classes(f"w-full {theme['bg_input']} {theme['text_primary']}")
             self.selects.append(self.baud_select)
 
             is_connected = serial_manager.is_connected if serial_manager else False
@@ -489,13 +492,14 @@ class LogViewer:
             ui.separator().classes(f"my-4")
             ui.label("Filters").classes(f"text-xs font-bold")
             with ui.row().classes('w-full items-center no-wrap gap-1'):
-                self.level_select = ui.select(options=["V", "D", "I", "W", "E", "U"], value=app_state.filter_level, label="Level", multiple=True, on_change=self.on_level_filter_change).classes(f"grow {theme['bg_input']}").props('use-chips dense outlined')
+                self.level_select = ui.select(options=["V", "D", "I", "W", "E", "U"], value=app_state.filter_level, label="Level", multiple=True, on_change=self.on_level_filter_change).classes(f"grow {theme['bg_input']} {theme['text_primary']}").props('use-chips dense outlined')
+                self.selects.append(self.level_select)
                 ui.button(icon='select_all', on_click=lambda: self.level_select.set_value(["V", "D", "I", "W", "E", "U"])).props('flat dense round size=sm')
                 ui.button(icon='clear', on_click=lambda: self.level_select.set_value([])).props('flat dense round color=red size=sm')
 
-            self.file_select = ui.select(options=sorted(list(unique_files)), value=app_state.filter_file, label="File", multiple=True, on_change=self.on_file_filter_change)
+            self.file_select = ui.select(options=sorted(list(unique_files)), value=app_state.filter_file, label="File", multiple=True, on_change=self.on_file_filter_change).classes(f"w-full {theme['bg_input']} {theme['text_primary']}")
             self.selects.append(self.file_select)
-            self.function_select = ui.select(options=sorted(list(unique_functions)), value=app_state.filter_function, label="Function", multiple=True, on_change=self.on_function_filter_change)
+            self.function_select = ui.select(options=sorted(list(unique_functions)), value=app_state.filter_function, label="Function", multiple=True, on_change=self.on_function_filter_change).classes(f"w-full {theme['bg_input']} {theme['text_primary']}")
             self.selects.append(self.function_select)
             ui.separator().classes(f"my-4")
             ui.button("Clear Logs", on_click=self.on_clear_logs).classes('w-full bg-red-600 text-white rounded-none font-bold shadow-md')
@@ -506,7 +510,7 @@ class LogViewer:
             self.header_row = ui.row().classes(f"w-full {theme['bg_header']} p-2 border-b {theme['border']} items-center shrink-0 gap-2 transition-colors duration-300")
             with self.header_row:
                 ui.button(icon='menu', on_click=self.drawer.toggle).props('flat round dense')
-                with ui.input(placeholder="Search logs... (* ?)", on_change=self.on_search_change).classes(f"grow {theme['bg_input']}").props('dense outlined square') as search:
+                with ui.input(placeholder="Search logs... (* ?)", on_change=self.on_search_change).classes(f"grow {theme['bg_input']} {theme['text_primary']}").props('dense outlined square') as search:
                     self.inputs.append(search)
                     search.value = self.search_term
                     with search.add_slot('prepend'): ui.icon('search')
@@ -525,9 +529,12 @@ class LogViewer:
             self.footer_row = ui.row().classes(f"w-full {theme['bg_header']} p-2 border-t {theme['border']} items-center shrink-0 gap-2")
             with self.footer_row:
                 ui.icon('terminal')
-                self.cli_input = ui.input(placeholder="Send command...", on_change=None).classes(f"grow {theme['bg_input']}").props('dense outlined square')
+                self.cli_input = ui.input(placeholder="Send command...", on_change=None).classes(f"grow {theme['bg_input']} {theme['text_primary']}").props('dense outlined square')
                 self.inputs.append(self.cli_input)
+                # Bind Enter Key Robustly
                 self.cli_input.on('keydown.enter', self.send_cli_command)
+                self.cli_input.on('keyup.enter', self.send_cli_command) # Add keyup as backup
+
                 def handle_up():
                     if not app_state.cli_history: return
                     if self.history_index == -1: self.history_index = len(app_state.cli_history) - 1
