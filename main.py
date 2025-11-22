@@ -152,6 +152,7 @@ class LogViewer:
         self.connect_switch = None
         self.cli_input = None
         self.dark_mode_toggle = None
+        self.drawer = None
 
     def check_match(self, entry: LogEntry):
         """
@@ -524,11 +525,11 @@ class LogViewer:
 
         # Header / Sidebar
         # Header / Sidebar
-        # Fix: Bind background class to dark mode state explicitly or use a container that updates
-        drawer_bg = self.dark_mode.bind_value(app_state, 'dark_mode').map(lambda x: 'bg-slate-800' if x else 'bg-slate-100')
+        # Fix: Use explicit class management instead of complex bindings that caused 500 error
+        drawer_classes = 'q-pa-md bg-slate-800' if self.dark_mode.value else 'q-pa-md bg-slate-100'
         
-        with ui.left_drawer(value=True).classes('q-pa-md').bind_classes_from(self.dark_mode, 'value', 
-                                                                           {True: 'bg-slate-800', False: 'bg-slate-100'}) as drawer:
+        with ui.left_drawer(value=True).classes(drawer_classes) as drawer:
+            self.drawer = drawer
             ui.markdown("### SerialLens").classes('dark:text-white')
 
             # --- Appearance ---
@@ -619,6 +620,13 @@ class LogViewer:
         app_state.dark_mode = e.value
         # Force refresh logs to apply new colors
         self.refresh_log_view()
+        
+        # Update Drawer Background explicitly
+        if self.drawer:
+            if self.dark_mode.value:
+                self.drawer.classes('bg-slate-800', remove='bg-slate-100')
+            else:
+                self.drawer.classes('bg-slate-100', remove='bg-slate-800')
 
         # JS Injection
         ui.add_head_html("""
@@ -673,7 +681,7 @@ class LogViewer:
             
             # --- Top Toolbar ---
             with ui.row().classes('w-full bg-white dark:bg-slate-800 p-2 border-b dark:border-slate-700 items-center shrink-0 gap-2'):
-                ui.button(icon='menu', on_click=drawer.toggle).props('flat round dense')
+                ui.button(icon='menu', on_click=lambda: self.drawer.toggle()).props('flat round dense')
                 
                 # Search Bar (Top Center/Left)
                 with ui.input(placeholder="Search logs... (* ?)", on_change=self.on_search_change).classes('grow').props('dense outlined rounded') as search:
