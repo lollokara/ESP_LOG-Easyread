@@ -15,6 +15,15 @@ sep = os.pathsep
 datas = collect_data_files('nicegui')
 add_data_args = [f'--add-data={src}{sep}{dest}' for src, dest in datas]
 
+# Splash screen path
+splash_image = os.path.join('assets', 'splash.png')
+splash_arg = []
+if os.path.exists(splash_image):
+    splash_arg = [f'--splash={splash_image}']
+    print(f"Adding splash screen: {splash_image}")
+else:
+    print(f"Warning: Splash screen not found at {splash_image}")
+
 # Basic PyInstaller arguments
 args = [
     'main.py',                        # Your main script
@@ -23,7 +32,7 @@ args = [
     '--windowed',                     # No console window (Mac/Windows)
     '--clean',                        # Clean cache
     '--add-data=requirements.txt:.',  # Add any data files if needed
-] + add_data_args + [
+] + add_data_args + splash_arg + [
     # NiceGUI / Starlette / Uvicorn hidden imports
     # These are often missed by PyInstaller's auto-analysis
     '--hidden-import=uvicorn.logging',
