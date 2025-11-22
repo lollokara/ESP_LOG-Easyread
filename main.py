@@ -21,20 +21,18 @@ class AppState:
     def __init__(self):
         self.port = None
         self.baud = 115200
-        # Level defaults to all specific levels selected (explicit list)
         self.filter_level = ["V", "D", "I", "W", "E", "U"]
         self.filter_file = ["ALL"]
-        self.filter_function = ["ALL"] # Changed to list
+        self.filter_function = ["ALL"]
         self.auto_scroll = True
         self.auto_reconnect = False
         self.save_to_file = False
         self.mock_mode = False
         self.realtime_timestamp = False
         
-        # New Features
         self.search_term = ""
         self.cli_history = []
-        self.cli_line_ending = "LF" # LF, CR, CRLF
+        self.cli_line_ending = "LF"
         self.font_size = 14
         self.visible_columns = {
             "timestamp": True,
@@ -43,46 +41,29 @@ class AppState:
             "function": True,
             "message": True
         }
-        self.dark_mode = False # Persist dark mode preference
+        self.current_theme = "Dark"
 
 app_state = AppState()
 
-# We store all logs in a global list for persistence across page reloads
 global_lock = threading.Lock()
 global_logs = []
 unique_files = {"ALL"}
 unique_functions = {"ALL"}
 
 def handle_log(entry: LogEntry):
-    """
-    Callback from SerialManager.
-    """
     global global_logs, unique_files, unique_functions
     with global_lock:
         global_logs.append(entry)
-
         if entry.file != "UNDEFINED":
             unique_files.add(entry.file)
         if entry.function != "UNDEFINED":
             unique_functions.add(entry.function)
 
-# Mock Generator
 def mock_log_generator():
-    """Generates fake logs for testing."""
     files = ["main.cpp", "wifi.cpp", "sensor.cpp", "preferences.cpp", "display.cpp"]
     functions = ["setup", "loop", "connect", "read_data", "update_ui", "save_config", "init"]
     levels = ["V", "D", "I", "W", "E"]
-    messages = [
-        "Starting up...",
-        "Connection failed",
-        "Data received: 0xFE",
-        "Battery level: 85%",
-        "NVS Error: Key not found",
-        "WiFi connected, IP: 192.168.1.123",
-        "Rendering frame",
-        "Watchdog reset"
-    ]
-
+    messages = ["Starting up...", "Connection failed", "Data received: 0xFE", "Battery level: 85%", "NVS Error: Key not found", "WiFi connected, IP: 192.168.1.123", "Rendering frame", "Watchdog reset"]
     counter = 0
     while mock_mode:
         timestamp = str(int(time.time() * 1000) % 100000)
@@ -91,13 +72,8 @@ def mock_log_generator():
         line = random.randint(10, 500)
         function = random.choice(functions)
         msg = random.choice(messages)
-
-        # 10% chance of non-standard log
-        if random.random() < 0.1:
-            raw = f"Standard output message {counter}"
-        else:
-            raw = f"[{timestamp}][{level}][{file}:{line}] {function}(): {msg} {counter}"
-
+        if random.random() < 0.1: raw = f"Standard output message {counter}"
+        else: raw = f"[{timestamp}][{level}][{file}:{line}] {function}(): {msg} {counter}"
         entry = LogEntry(
             timestamp=timestamp if raw.startswith("[") else "UNDEFINED",
             level=level if raw.startswith("[") else "U",
@@ -106,144 +82,119 @@ def mock_log_generator():
             message=msg if raw.startswith("[") else raw,
             original=raw
         )
-
         handle_log(entry)
         if serial_manager and serial_manager.save_to_file and serial_manager.file_handle:
              serial_manager.file_handle.write(entry.to_file_format() + "\n")
              serial_manager.file_handle.flush()
-
         counter += 1
         time.sleep(random.uniform(0.05, 0.5))
 
+THEMES = {
+    "Light": {
+        "bg_main": "bg-white", "bg_sidebar": "bg-gray-100", "bg_header": "bg-white", "bg_input": "bg-white",
+        "text_primary": "text-gray-800", "text_secondary": "text-gray-600", "border": "border-gray-300",
+        "log_hover": "hover:bg-gray-100", "log_V": "text-gray-500", "log_D": "text-blue-600",
+        "log_I": "text-green-600", "log_W": "text-yellow-600", "log_E": "text-red-600 font-bold",
+        "button_active": "bg-blue-500 text-white", "accent": "blue-500", "log_bg": "bg-gray-50"
+    },
+    "Dark": {
+        "bg_main": "bg-slate-900", "bg_sidebar": "bg-slate-800", "bg_header": "bg-slate-800", "bg_input": "bg-slate-900",
+        "text_primary": "text-gray-200", "text_secondary": "text-gray-400", "border": "border-slate-700",
+        "log_hover": "hover:bg-slate-800", "log_V": "text-gray-400", "log_D": "text-blue-400",
+        "log_I": "text-green-400", "log_W": "text-yellow-400", "log_E": "text-red-400 font-bold",
+        "button_active": "bg-blue-600 text-white", "accent": "blue-400", "log_bg": "bg-slate-900"
+    },
+    "Cyberpunk": {
+        "bg_main": "bg-black", "bg_sidebar": "bg-zinc-900", "bg_header": "bg-zinc-900", "bg_input": "bg-black",
+        "text_primary": "text-cyan-400", "text_secondary": "text-pink-500", "border": "border-pink-500",
+        "log_hover": "hover:bg-zinc-900", "log_V": "text-zinc-500", "log_D": "text-cyan-400",
+        "log_I": "text-green-400", "log_W": "text-yellow-400", "log_E": "text-red-500 font-bold",
+        "button_active": "bg-pink-600 text-black", "accent": "cyan-400", "log_bg": "bg-black"
+    },
+    "Monokai": {
+        "bg_main": "bg-[#272822]", "bg_sidebar": "bg-[#1e1f1c]", "bg_header": "bg-[#1e1f1c]", "bg_input": "bg-[#272822]",
+        "text_primary": "text-[#f8f8f2]", "text_secondary": "text-[#75715e]", "border": "border-[#75715e]",
+        "log_hover": "hover:bg-[#3e3d32]", "log_V": "text-[#75715e]", "log_D": "text-[#66d9ef]",
+        "log_I": "text-[#a6e22e]", "log_W": "text-[#fd971f]", "log_E": "text-[#f92672] font-bold",
+        "button_active": "bg-[#a6e22e] text-[#272822]", "accent": "green-400", "log_bg": "bg-[#272822]"
+    }
+}
+
 class LogViewer:
     def __init__(self):
-        # Load initial state from global AppState
         self.filter_level = app_state.filter_level
         self.filter_file = app_state.filter_file
         self.filter_function = app_state.filter_function
         self.auto_scroll = app_state.auto_scroll
-        
-        # Local copies for fast access, synced with AppState
         self.search_term = app_state.search_term
         self.font_size = app_state.font_size
         self.visible_columns = app_state.visible_columns.copy()
+        self.current_theme = app_state.current_theme
         
-        # CLI History Tracking
-        self.history_index = -1 # -1 means new command mode
-
+        self.history_index = -1
         self.last_processed_index = 0
-
-        # Track HTML strings for rolling window
         self.html_logs_primary = deque(maxlen=2000)
         self.html_logs_secondary = deque(maxlen=500) 
 
-        # UI References
         self.log_container_id_primary = f"log-container-primary-{id(self)}"
         self.log_container_id_secondary = f"log-container-secondary-{id(self)}"
         self.log_container_primary = None
-        self.log_container_secondary = None
         
+        self.drawer = None
+        self.main_column = None
+        self.header_row = None
+        self.footer_row = None
         self.scroll_area = None
-        self.file_select = None
-        self.function_select = None
-        self.level_select = None
-        self.port_select = None
-        self.baud_select = None
-        self.connect_switch = None
-        self.cli_input = None
-        self.dark_mode_toggle = None
+        self.inputs = []
+        self.buttons = []
+        self.labels = []
+        self.separators = []
+        self.selects = []
+
+    def get_theme(self):
+        return THEMES.get(self.current_theme, THEMES["Dark"])
 
     def check_match(self, entry: LogEntry):
-        """
-        Returns:
-        0: HIDDEN (No match anywhere)
-        1: PRIMARY (Matches Filters AND Search)
-        2: SECONDARY (Matches Search BUT Fails Filters)
-        """
-        
-        # 1. Check Search (Base requirement for visibility)
         matches_search = True
         if self.search_term:
-            # Case insensitive search on the full original string or message?
-            # "search the entire logs" -> usually implies original raw line
             text_to_search = entry.original.lower()
             pattern = self.search_term.lower()
-            
             if '*' in pattern or '?' in pattern:
-                 if not fnmatch.fnmatch(text_to_search, f"*{pattern}*"): # Add wildcards for 'contains' logic
-                      matches_search = False
+                 if not fnmatch.fnmatch(text_to_search, f"*{pattern}*"): matches_search = False
             else:
-                 if pattern not in text_to_search:
-                      matches_search = False
-        
-        if not matches_search:
-            return 0
-            
-        # 2. Check Filters
-        matches_filters = True
-        
-        # Level
-        if entry.level not in self.filter_level:
-            matches_filters = False
-
-        # File
-        if "ALL" not in self.filter_file:
-            if entry.file not in self.filter_file:
-                matches_filters = False
-
-        # Function
-        if "ALL" not in self.filter_function:
-            if entry.function not in self.filter_function:
-                matches_filters = False
-                
-        if matches_filters:
-            return 1
-        else:
-            return 2
+                 if pattern not in text_to_search: matches_search = False
+        if not matches_search: return 0
+        if entry.level not in self.filter_level: return 2
+        if "ALL" not in self.filter_file and entry.file not in self.filter_file: return 2
+        if "ALL" not in self.filter_function and entry.function not in self.filter_function: return 2
+        return 1
 
     async def update_loop(self):
-        """
-        Called periodically by ui.timer.
-        Checks for new logs in global_logs and updates the UI.
-        """
         global global_logs
-
-        # Check if client is still connected to avoid RuntimeError
         try:
-            # Simple keep-alive check.
-            if not self.log_container_primary or not self.log_container_primary.client.has_socket_connection:
-                 return
-        except Exception:
-            return
+            if not self.log_container_primary or not self.log_container_primary.client.has_socket_connection: return
+        except Exception: return
 
         try:
-            # Thread-safe access to global logs
             with global_lock:
                 current_len = len(global_logs)
-
-                # If we have new logs
                 if current_len > self.last_processed_index:
                     new_entries = global_logs[self.last_processed_index:current_len]
                     self.last_processed_index = current_len
-
-                    # Update Dropdowns if needed
-                    if self.file_select:
+                    if hasattr(self, 'file_select'):
                         current_opts = set(self.file_select.options)
                         if len(unique_files) > len(current_opts):
                             self.file_select.options = sorted(list(unique_files))
                             self.file_select.update()
-
-                    if self.function_select:
+                    if hasattr(self, 'function_select'):
                         current_opts = set(self.function_select.options)
                         if len(unique_functions) > len(current_opts):
                             self.function_select.options = sorted(list(unique_functions))
                             self.function_select.update()
 
-            # Filter new entries
             if 'new_entries' in locals() and new_entries:
                 primary_chunk = []
                 secondary_chunk = []
-                
                 for entry in new_entries:
                     match_status = self.check_match(entry)
                     if match_status == 1:
@@ -255,137 +206,75 @@ class LogViewer:
                         self.html_logs_secondary.append(html)
                         secondary_chunk.append(html)
 
-                    # Handle Auto-complete population for search? (optional, maybe later)
-
-                # JS Append Primary
                 if primary_chunk:
                     joined_html = "".join(primary_chunk)
                     js_html = json.dumps(joined_html)
-                    # We only autoscroll if we added to primary
                     cmd = f'window.logManager.append("{self.log_container_id_primary}", {js_html}, 2000, {str(self.auto_scroll).lower()})'
                     ui.run_javascript(cmd)
 
-                # JS Append Secondary
                 if secondary_chunk:
                     joined_html = "".join(secondary_chunk)
                     js_html = json.dumps(joined_html)
-                    # Secondary area generally doesn't autoscroll the main window, but it sits at the bottom.
-                    # If we are auto-scrolling, the secondary container is at the bottom of the scroll area anyway.
-                    cmd = f'window.logManager.append("{self.log_container_id_secondary}", {js_html}, 500, false)' # Less buffer for secondary
+                    cmd = f'window.logManager.append("{self.log_container_id_secondary}", {js_html}, 500, false)'
                     ui.run_javascript(cmd)
-                    
-                    # If autoscroll is ON and we added items to secondary but NOT primary, 
-                    # we still need to force the scroll to bottom because the secondary area expanded.
-                    # The primary logic handles it above if primary_chunk is true.
-                    # If primary_chunk is empty but secondary_chunk has data, we need to scroll.
                     if not primary_chunk and self.auto_scroll and self.scroll_area:
                         self.scroll_area.scroll_to(percent=1.0)
-
         except Exception as e:
             print("Error in update_loop:")
             traceback.print_exc()
 
     def refresh_log_view(self):
-        """Clears and rebuilds the log view based on current filters."""
-        if not self.log_container_primary:
-            return
-
+        if not self.log_container_primary: return
         self.html_logs_primary.clear()
         self.html_logs_secondary.clear()
-
-        # Filter all global logs with lock
         with global_lock:
             current_len = len(global_logs)
-            
-            # Re-process all logs
-            # Optimization: If list is huge, this might be slow. But strictly needed for search/filter changes.
-            # Limit to last 3000?
             scan_start = max(0, current_len - 5000)
             entries_to_scan = global_logs[scan_start:]
             self.last_processed_index = current_len
-
-        # Bucket them
         for entry in entries_to_scan:
             match_status = self.check_match(entry)
-            if match_status == 1:
-                self.html_logs_primary.append(self.format_log_html(entry, dimmed=False))
-            elif match_status == 2:
-                self.html_logs_secondary.append(self.format_log_html(entry, dimmed=True))
-
-        # Trim to window size
-        while len(self.html_logs_primary) > 2000:
-             self.html_logs_primary.popleft()
-        while len(self.html_logs_secondary) > 500:
-             self.html_logs_secondary.popleft()
-
-        # Render Primary
+            if match_status == 1: self.html_logs_primary.append(self.format_log_html(entry, dimmed=False))
+            elif match_status == 2: self.html_logs_secondary.append(self.format_log_html(entry, dimmed=True))
+        while len(self.html_logs_primary) > 2000: self.html_logs_primary.popleft()
+        while len(self.html_logs_secondary) > 500: self.html_logs_secondary.popleft()
         joined_html_p = "".join(self.html_logs_primary)
         js_html_p = json.dumps(joined_html_p)
-        cmd_p = f'window.logManager.setContent("{self.log_container_id_primary}", {js_html_p})'
-        ui.run_javascript(cmd_p)
-
-        # Render Secondary
+        ui.run_javascript(f'window.logManager.setContent("{self.log_container_id_primary}", {js_html_p})')
         joined_html_s = "".join(self.html_logs_secondary)
         js_html_s = json.dumps(joined_html_s)
-        cmd_s = f'window.logManager.setContent("{self.log_container_id_secondary}", {js_html_s})'
-        ui.run_javascript(cmd_s)
-
-        if self.auto_scroll and self.scroll_area:
-             self.scroll_area.scroll_to(percent=1.0)
+        ui.run_javascript(f'window.logManager.setContent("{self.log_container_id_secondary}", {js_html_s})')
+        if self.auto_scroll and self.scroll_area: self.scroll_area.scroll_to(percent=1.0)
 
     def format_log_html(self, entry: LogEntry, dimmed: bool = False) -> str:
-        # Timestamp logic
+        theme = self.get_theme()
         if app_state.realtime_timestamp:
             dt = datetime.datetime.fromtimestamp(entry.arrival_time)
             ts_str = dt.strftime("%M:%S:%f")[:-3]
-        else:
-            ts_str = entry.timestamp
+        else: ts_str = entry.timestamp
 
-        # Styles
         base_opacity = "opacity-50 grayscale" if dimmed else ""
-        # Font size class is handled by parent container class or we inject inline style?
-        # Tailwind arbitrary values for font size: text-[14px]
         font_style = f"font-size: {self.font_size}px;"
-        
-        # Adaptive colors for Light/Dark mode
-        # Using standard Tailwind colors that look okay on both or specific dark variants
-        color_class = "text-gray-800 dark:text-gray-200"
-        if entry.level == "E": color_class = "text-red-600 dark:text-red-400 font-bold"
-        elif entry.level == "W": color_class = "text-yellow-600 dark:text-yellow-400"
-        elif entry.level == "I": color_class = "text-green-600 dark:text-green-400"
-        elif entry.level == "D": color_class = "text-blue-600 dark:text-blue-400"
-        elif entry.level == "V": color_class = "text-gray-500 dark:text-gray-400"
+        color_class = theme["text_primary"]
+        if entry.level == "E": color_class = theme["log_E"]
+        elif entry.level == "W": color_class = theme["log_W"]
+        elif entry.level == "I": color_class = theme["log_I"]
+        elif entry.level == "D": color_class = theme["log_D"]
+        elif entry.level == "V": color_class = theme["log_V"]
 
-        # Sanitize message
         safe_msg = entry.message.replace("<", "&lt;").replace(">", "&gt;")
-        
-        # Columns Construction
         cols = []
-        
-        if self.visible_columns.get("timestamp", True):
-            cols.append(f'<div class="text-gray-400 w-24 shrink-0">[{ts_str}]</div>')
-        
-        if self.visible_columns.get("level", True):
-            cols.append(f'<div class="{color_class} w-8 shrink-0">[{entry.level}]</div>')
-            
+        if self.visible_columns.get("timestamp", True): cols.append(f'<div class="{theme["text_secondary"]} w-24 shrink-0">[{ts_str}]</div>')
+        if self.visible_columns.get("level", True): cols.append(f'<div class="{color_class} w-8 shrink-0">[{entry.level}]</div>')
         if self.visible_columns.get("file", True):
             file_str = f"[{entry.file}]" if entry.file != "UNDEFINED" else ""
-            cols.append(f'<div class="text-purple-600 dark:text-purple-400 w-48 shrink-0 truncate" title="{entry.file}">{file_str}</div>')
-            
+            cols.append(f'<div class="text-purple-500 w-48 shrink-0 truncate" title="{entry.file}">{file_str}</div>')
         if self.visible_columns.get("function", True):
             func_str = f"{entry.function}()" if entry.function != "UNDEFINED" else ""
-            cols.append(f'<div class="text-orange-600 dark:text-orange-400 w-40 shrink-0 truncate" title="{entry.function}">{func_str}</div>')
-            
-        if self.visible_columns.get("message", True):
-            cols.append(f'<div class="{color_class} grow break-all select-text">{safe_msg}</div>')
-
+            cols.append(f'<div class="text-orange-500 w-40 shrink-0 truncate" title="{entry.function}">{func_str}</div>')
+        if self.visible_columns.get("message", True): cols.append(f'<div class="{color_class} grow break-all select-text">{safe_msg}</div>')
         inner_html = "".join(cols)
-
-        return f"""
-        <div class="log-line w-full flex gap-1 font-mono items-start no-wrap hover:bg-gray-100 dark:hover:bg-slate-800 select-text {base_opacity}" style="{font_style}">
-            {inner_html}
-        </div>
-        """
+        return f"""<div class="log-line w-full flex gap-1 font-mono items-start no-wrap {theme['log_hover']} select-text {base_opacity} animate-fade-in" style="{font_style}">{inner_html}</div>"""
 
     def _handle_smart_all_selection(self, new_val, current_val, ui_element):
         result = new_val
@@ -419,8 +308,7 @@ class LogViewer:
     def on_autoscroll_change(self, e):
         self.auto_scroll = e.value
         app_state.auto_scroll = e.value
-        if self.auto_scroll and self.scroll_area:
-            self.scroll_area.scroll_to(percent=1.0)
+        if self.auto_scroll and self.scroll_area: self.scroll_area.scroll_to(percent=1.0)
 
     def on_search_change(self, e):
         self.search_term = e.value
@@ -430,7 +318,7 @@ class LogViewer:
     def on_font_size_change(self, delta):
         self.font_size = max(8, min(30, self.font_size + delta))
         app_state.font_size = self.font_size
-        self.refresh_log_view() # Need to re-render to apply inline styles
+        self.refresh_log_view()
         
     def on_column_toggle(self, col_name, value):
         self.visible_columns[col_name] = value
@@ -439,15 +327,11 @@ class LogViewer:
 
     def on_clear_logs(self):
         global global_logs
-        with global_lock:
-            global_logs.clear()
-
+        with global_lock: global_logs.clear()
         self.html_logs_primary.clear()
         self.html_logs_secondary.clear()
-        if self.log_container_primary:
-             ui.run_javascript(f'window.logManager.setContent("{self.log_container_id_primary}", "")')
-        if self.log_container_secondary:
-             ui.run_javascript(f'window.logManager.setContent("{self.log_container_id_secondary}", "")')
+        if self.log_container_primary: ui.run_javascript(f'window.logManager.setContent("{self.log_container_id_primary}", "")')
+        if self.log_container_secondary: ui.run_javascript(f'window.logManager.setContent("{self.log_container_id_secondary}", "")')
         self.last_processed_index = 0
 
     def on_connect_toggle(self, e):
@@ -456,8 +340,7 @@ class LogViewer:
         if e.value: 
             app_state.port = port
             app_state.baud = baud
-            if serial_manager.connect(port, baud):
-                 ui.notify(f"Connected to {port}")
+            if serial_manager.connect(port, baud): ui.notify(f"Connected to {port}")
             else:
                  ui.notify(f"Failed to connect to {port}", type='negative')
                  self.connect_switch.value = False
@@ -478,186 +361,85 @@ class LogViewer:
             mock_thread = threading.Thread(target=mock_log_generator, daemon=True)
             mock_thread.start()
             ui.notify("Mock Mode Started")
-            if self.connect_switch:
-                self.connect_switch.disable()
+            if self.connect_switch: self.connect_switch.disable()
         else:
             ui.notify("Mock Mode Stopped")
-            if self.connect_switch:
-                self.connect_switch.enable()
+            if self.connect_switch: self.connect_switch.enable()
                 
     def send_cli_command(self):
         cmd = self.cli_input.value
         if not cmd: return
-        
-        # Add to history
         if not app_state.cli_history or app_state.cli_history[-1] != cmd:
             app_state.cli_history.append(cmd)
-            # Keep history reasonable
-            if len(app_state.cli_history) > 50:
-                app_state.cli_history.pop(0)
-        
-        # Reset history index
+            if len(app_state.cli_history) > 50: app_state.cli_history.pop(0)
         self.history_index = -1
-        
-        # Determine line ending
-        ending = ""
-        if app_state.cli_line_ending == "LF": ending = "\n"
-        elif app_state.cli_line_ending == "CR": ending = "\r"
-        elif app_state.cli_line_ending == "CRLF": ending = "\r\n"
-        
+        ending = {"LF": "\n", "CR": "\r", "CRLF": "\r\n"}.get(app_state.cli_line_ending, "\n")
         full_cmd = cmd + ending
-        
         if serial_manager and serial_manager.is_connected:
             serial_manager.write(full_cmd.encode('utf-8'))
             ui.notify(f"Sent: {cmd}")
-        elif mock_mode:
-             ui.notify(f"Mock Sent: {cmd}")
-        else:
-            ui.notify("Not Connected", type='warning')
-            
+        elif mock_mode: ui.notify(f"Mock Sent: {cmd}")
+        else: ui.notify("Not Connected", type='warning')
         self.cli_input.value = ""
 
-    def build_ui(self):
-        # Initialize Dark Mode
-        self.dark_mode = ui.dark_mode()
-        self.dark_mode.value = app_state.dark_mode
+    def on_theme_change(self, e):
+        self.current_theme = e.value
+        app_state.current_theme = e.value
+        theme = self.get_theme()
 
-        # Header / Sidebar
-        # Header / Sidebar
-        # Fix: Bind background class to dark mode state explicitly or use a container that updates
-        drawer_bg = self.dark_mode.bind_value(app_state, 'dark_mode').map(lambda x: 'bg-slate-800' if x else 'bg-slate-100')
+        # Sync Quasar Dark Mode
+        ui.dark_mode().value = (self.current_theme != "Light")
+
+        # Update Main Layout
+        self.main_column.classes(replace=f"w-full h-screen p-0 overflow-hidden no-wrap {theme['bg_main']} {theme['text_primary']}")
+        self.drawer.classes(replace=f"q-pa-md {theme['bg_sidebar']} {theme['text_primary']} transition-all duration-300 border-r {theme['border']}")
+        self.header_row.classes(replace=f"w-full {theme['bg_header']} p-2 border-b {theme['border']} items-center shrink-0 gap-2 transition-colors duration-300")
+        self.footer_row.classes(replace=f"w-full {theme['bg_header']} p-2 border-t {theme['border']} items-center shrink-0 gap-2")
+        self.scroll_area.classes(replace=f"w-full grow {theme['log_bg']} select-text")
+        self.log_container_secondary.classes(replace=f"w-full flex flex-col select-text p-2 {theme['bg_sidebar']} border-t {theme['border']}")
+
+        # Update Controls
+        for inp in self.inputs: inp.classes(replace=f"grow {theme['bg_input']}").props('dense outlined square')
+        for sel in self.selects: sel.classes(replace=f"w-full {theme['bg_input']}").props('dense outlined')
         
-        with ui.left_drawer(value=True).classes('q-pa-md').bind_classes_from(self.dark_mode, 'value', 
-                                                                           {True: 'bg-slate-800', False: 'bg-slate-100'}) as drawer:
-            ui.markdown("### SerialLens").classes('dark:text-white')
-
-            # --- Appearance ---
-            ui.label("Appearance").classes('text-xs font-bold text-gray-500 mt-2')
-            
-            # Dark Mode Toggle
-            ui.switch("Dark Mode", value=self.dark_mode.value, on_change=lambda e: self._on_dark_mode_change(e)).classes('w-full')
-            
-            # Font Scale
-            with ui.row().classes('w-full items-center justify-between'):
-                ui.label("Font Size").classes('dark:text-gray-300')
-                with ui.row().classes('gap-1'):
-                    ui.button("-", on_click=lambda: self.on_font_size_change(-1)).props('dense round flat')
-                    ui.button("+", on_click=lambda: self.on_font_size_change(1)).props('dense round flat')
-
-            # Columns
-            with ui.expansion('Columns', icon='view_column').classes('w-full text-sm'):
-                for col, label in [("timestamp", "Time"), ("level", "Level"), ("file", "File"), ("function", "Function"), ("message", "Message")]:
-                    ui.checkbox(label, value=self.visible_columns[col], on_change=lambda e, c=col: self.on_column_toggle(c, e.value)).props('dense')
-
-            # --- Connection ---
-            ui.separator().classes('my-2')
-            ui.label("Connection").classes('text-xs font-bold text-gray-500')
-
-            ports = serial_manager.list_ports()
-            current_port = app_state.port if app_state.port in ports else (ports[0] if ports else None)
-
-            self.port_select = ui.select(options=ports, value=current_port, label="Port").classes('w-full')
-            ui.button("Refresh", on_click=self.on_refresh_ports).classes('w-full mb-2 text-xs').props('dense outline')
-            
-            self.baud_select = ui.select(
-                options=[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600],
-                value=app_state.baud,
-                label="Baud"
-            ).classes('w-full')
-
-            is_connected = serial_manager.is_connected if serial_manager else False
-            self.connect_switch = ui.switch("Connect", value=is_connected, on_change=self.on_connect_toggle).classes('w-full')
-            if mock_mode: self.connect_switch.disable()
-
-            ui.checkbox("Auto-reconnect", value=serial_manager.auto_reconnect if serial_manager else False, on_change=lambda e: serial_manager.set_auto_reconnect(e.value))
-
-            # --- Logging ---
-            ui.separator().classes('my-2')
-            ui.label("Logging").classes('text-xs font-bold text-gray-500')
-            ui.checkbox("Save to File", value=serial_manager.save_to_file if serial_manager else False, on_change=lambda e: serial_manager.set_save_to_file(e.value))
-            ui.switch("Mock Mode", value=mock_mode, on_change=self.on_mock_toggle)
-
-            # --- Filters ---
-            ui.separator().classes('my-2')
-            ui.label("Filters").classes('text-xs font-bold text-gray-500')
-
-            # Level
-            with ui.row().classes('w-full items-center no-wrap'):
-                self.level_select = ui.select(
-                    options=["V", "D", "I", "W", "E", "U"],
-                    value=app_state.filter_level,
-                    label="Level",
-                    multiple=True,
-                    on_change=self.on_level_filter_change
-                ).classes('grow').props('use-chips dense')
-                with ui.button(icon='select_all', on_click=lambda: self.level_select.set_value(["V", "D", "I", "W", "E", "U"])).props('flat dense round size=sm'): pass
-                with ui.button(icon='clear', on_click=lambda: self.level_select.set_value([])).props('flat dense round color=red size=sm'): pass
-
-            # File
-            self.file_select = ui.select(
-                options=sorted(list(unique_files)),
-                value=app_state.filter_file,
-                label="File",
-                multiple=True,
-                on_change=self.on_file_filter_change
-            ).classes('w-full').props('use-chips dense')
-
-            # Function
-            self.function_select = ui.select(
-                options=sorted(list(unique_functions)),
-                value=app_state.filter_function,
-                label="Function",
-                multiple=True,
-                on_change=self.on_function_filter_change
-            ).classes('w-full').props('use-chips dense')
-
-            ui.separator().classes('my-4')
-            ui.button("Clear Logs", on_click=self.on_clear_logs, color='red').classes('w-full')
-
-    def _on_dark_mode_change(self, e):
-        self.dark_mode.value = e.value
-        app_state.dark_mode = e.value
-        # Force refresh logs to apply new colors
         self.refresh_log_view()
 
-        # JS Injection
+    def build_ui(self):
+        # Initialize Quasar Dark Mode based on initial theme
+        ui.dark_mode().value = (self.current_theme != "Light")
+
+        theme = self.get_theme()
         ui.add_head_html("""
         <style>
-        body { overflow: hidden; }
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+        body { overflow: hidden; font-family: 'JetBrains Mono', monospace; }
         .select-text { -webkit-user-select: text !important; user-select: text !important; }
         .log-line { line-height: 1.5; border-bottom: 1px solid transparent; }
-        .log-line:hover { border-bottom: 1px solid #ddd; }
+        .log-line:hover { border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+        @keyframes fade-in { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: none; } }
+        .animate-fade-in { animation: fade-in 0.1s ease-out forwards; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 0; }
+        ::-webkit-scrollbar-thumb:hover { background: #777; }
         </style>
         <script>
         window.logManager = {
             append: function(id, html, maxLines, autoScroll) {
                 const el = document.getElementById(id);
                 if (!el) return;
-
                 const scrollTarget = el.closest('.q-scrollarea').querySelector('.q-scrollarea__container');
-
                 el.insertAdjacentHTML('beforeend', html);
-
                 let removedHeight = 0;
                 let countToRemove = el.childElementCount - maxLines;
-
                 if (countToRemove > 0) {
                     if (!autoScroll && scrollTarget) {
-                        for(let i=0; i<countToRemove; i++) {
-                            removedHeight += el.children[i].offsetHeight;
-                        }
+                        for(let i=0; i<countToRemove; i++) { removedHeight += el.children[i].offsetHeight; }
                     }
-                    while (el.childElementCount > maxLines) {
-                        el.firstElementChild.remove();
-                    }
-                    if (!autoScroll && scrollTarget && removedHeight > 0) {
-                        scrollTarget.scrollTop -= removedHeight;
-                    }
+                    while (el.childElementCount > maxLines) { el.firstElementChild.remove(); }
+                    if (!autoScroll && scrollTarget && removedHeight > 0) { scrollTarget.scrollTop -= removedHeight; }
                 }
-
-                if (autoScroll && scrollTarget) {
-                    scrollTarget.scrollTop = scrollTarget.scrollHeight;
-                }
+                if (autoScroll && scrollTarget) { scrollTarget.scrollTop = scrollTarget.scrollHeight; }
             },
             setContent: function(id, html) {
                 const el = document.getElementById(id);
@@ -667,101 +449,113 @@ class LogViewer:
         </script>
         """)
 
-        # Main Layout
-        # Fix: Revert absolute positioning, use standard flex column that fills screen
-        with ui.column().classes('w-full h-screen p-0 overflow-hidden no-wrap bg-white dark:bg-slate-900'):
+        # 1. Drawer defined at top level
+        with ui.left_drawer(value=True).classes(f"q-pa-md {theme['bg_sidebar']} {theme['text_primary']} transition-all duration-300 border-r {theme['border']}") as self.drawer:
+            ui.markdown("### SerialLens").classes('font-bold')
+            ui.label("Appearance").classes(f"text-xs font-bold mt-4")
+            self.selects.append(ui.select(options=list(THEMES.keys()), value=self.current_theme, label="Theme", on_change=self.on_theme_change))
             
-            # --- Top Toolbar ---
-            with ui.row().classes('w-full bg-white dark:bg-slate-800 p-2 border-b dark:border-slate-700 items-center shrink-0 gap-2'):
-                ui.button(icon='menu', on_click=drawer.toggle).props('flat round dense')
-                
-                # Search Bar (Top Center/Left)
-                with ui.input(placeholder="Search logs... (* ?)", on_change=self.on_search_change).classes('grow').props('dense outlined rounded') as search:
-                    search.value = self.search_term
-                    with search.add_slot('prepend'):
-                        ui.icon('search')
-                    with search.add_slot('append'):
-                         ui.icon('close').props('cursor-pointer').on('click', lambda: search.set_value(""))
+            with ui.row().classes('w-full items-center justify-between mt-2'):
+                ui.label("Font Size")
+                with ui.row().classes('gap-1'):
+                    ui.button("-", on_click=lambda: self.on_font_size_change(-1)).props('dense square flat')
+                    ui.button("+", on_click=lambda: self.on_font_size_change(1)).props('dense square flat')
 
+            with ui.expansion('Columns', icon='view_column').classes('w-full text-sm'):
+                for col, label in [("timestamp", "Time"), ("level", "Level"), ("file", "File"), ("function", "Function"), ("message", "Message")]:
+                    ui.checkbox(label, value=self.visible_columns[col], on_change=lambda e, c=col: self.on_column_toggle(c, e.value)).props('dense')
+
+            ui.separator().classes(f"my-4")
+            ui.label("Connection").classes(f"text-xs font-bold")
+
+            ports = serial_manager.list_ports()
+            current_port = app_state.port if app_state.port in ports else (ports[0] if ports else None)
+            self.port_select = ui.select(options=ports, value=current_port, label="Port").classes(f"w-full {theme['bg_input']}").props('dense outlined')
+            self.selects.append(self.port_select)
+            ui.button("Refresh", on_click=self.on_refresh_ports).classes(f"w-full mb-2 text-xs border").props('dense square outline')
+            self.baud_select = ui.select(options=[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600], value=app_state.baud, label="Baud")
+            self.selects.append(self.baud_select)
+
+            is_connected = serial_manager.is_connected if serial_manager else False
+            self.connect_switch = ui.switch("Connect", value=is_connected, on_change=self.on_connect_toggle).classes('w-full')
+            if mock_mode: self.connect_switch.disable()
+            ui.checkbox("Auto-reconnect", value=serial_manager.auto_reconnect if serial_manager else False, on_change=lambda e: serial_manager.set_auto_reconnect(e.value))
+
+            ui.separator().classes(f"my-4")
+            ui.label("Logging").classes(f"text-xs font-bold")
+            ui.checkbox("Save to File", value=serial_manager.save_to_file if serial_manager else False, on_change=lambda e: serial_manager.set_save_to_file(e.value))
+            ui.switch("Mock Mode", value=mock_mode, on_change=self.on_mock_toggle)
+
+            ui.separator().classes(f"my-4")
+            ui.label("Filters").classes(f"text-xs font-bold")
+            with ui.row().classes('w-full items-center no-wrap gap-1'):
+                self.level_select = ui.select(options=["V", "D", "I", "W", "E", "U"], value=app_state.filter_level, label="Level", multiple=True, on_change=self.on_level_filter_change).classes(f"grow {theme['bg_input']}").props('use-chips dense outlined')
+                ui.button(icon='select_all', on_click=lambda: self.level_select.set_value(["V", "D", "I", "W", "E", "U"])).props('flat dense round size=sm')
+                ui.button(icon='clear', on_click=lambda: self.level_select.set_value([])).props('flat dense round color=red size=sm')
+
+            self.file_select = ui.select(options=sorted(list(unique_files)), value=app_state.filter_file, label="File", multiple=True, on_change=self.on_file_filter_change)
+            self.selects.append(self.file_select)
+            self.function_select = ui.select(options=sorted(list(unique_functions)), value=app_state.filter_function, label="Function", multiple=True, on_change=self.on_function_filter_change)
+            self.selects.append(self.function_select)
+            ui.separator().classes(f"my-4")
+            ui.button("Clear Logs", on_click=self.on_clear_logs).classes('w-full bg-red-600 text-white rounded-none font-bold shadow-md')
+
+        # 2. Main Column defined at top level, NOT containing the drawer
+        self.main_column = ui.column().classes(f"w-full h-screen p-0 overflow-hidden no-wrap {theme['bg_main']} {theme['text_primary']}")
+        with self.main_column:
+            self.header_row = ui.row().classes(f"w-full {theme['bg_header']} p-2 border-b {theme['border']} items-center shrink-0 gap-2 transition-colors duration-300")
+            with self.header_row:
+                ui.button(icon='menu', on_click=self.drawer.toggle).props('flat round dense')
+                with ui.input(placeholder="Search logs... (* ?)", on_change=self.on_search_change).classes(f"grow {theme['bg_input']}").props('dense outlined square') as search:
+                    self.inputs.append(search)
+                    search.value = self.search_term
+                    with search.add_slot('prepend'): ui.icon('search')
+                    with search.add_slot('append'): ui.icon('close').props('cursor-pointer').on('click', lambda: search.set_value(""))
                 ui.switch("Time", value=app_state.realtime_timestamp, on_change=lambda e: setattr(app_state, 'realtime_timestamp', e.value)).props('dense').tooltip("Real-time Timestamp")
                 ui.switch("Scroll", value=app_state.auto_scroll, on_change=self.on_autoscroll_change).props('dense').tooltip("Auto-scroll")
 
-            # --- Log Area ---
-            self.scroll_area = ui.scroll_area().classes('w-full grow bg-gray-50 dark:bg-slate-900 select-text')
+            self.scroll_area = ui.scroll_area().classes(f"w-full grow {theme['log_bg']} select-text")
             with self.scroll_area:
                 with ui.column().classes('w-full min-h-full'):
-                    # Primary Container (Active Logs)
                     self.log_container_primary = ui.element('div').props(f'id="{self.log_container_id_primary}"').classes('w-full flex flex-col select-text p-2')
-                    
-                    # Separator (if we have secondary logs logic, though dynamically they appear here)
-                    ui.separator().classes('my-4 opacity-30')
-                    
-                    # Secondary Container (Dimmed/Hidden Logs)
-                    ui.label("Filtered Matches (Search Only)").classes('text-xs text-gray-400 ml-2')
-                    self.log_container_secondary = ui.element('div').props(f'id="{self.log_container_id_secondary}"').classes('w-full flex flex-col select-text p-2 bg-gray-100 dark:bg-slate-800 border-t dark:border-slate-700')
+                    ui.separator().classes(f"my-4 opacity-30")
+                    ui.label("Filtered Matches (Search Only)").classes(f"text-xs ml-2")
+                    self.log_container_secondary = ui.element('div').props(f'id="{self.log_container_id_secondary}"').classes(f"w-full flex flex-col select-text p-2 {theme['bg_sidebar']} border-t {theme['border']}")
 
-            # --- Footer (CLI) ---
-            with ui.row().classes('w-full bg-white dark:bg-slate-800 p-2 border-t dark:border-slate-700 items-center shrink-0 gap-2'):
-                ui.icon('terminal').classes('text-gray-500')
-                
-                # CLI Input
-                # CLI Input
-                self.cli_input = ui.input(placeholder="Send command...", on_change=None).classes('grow').props('dense outlined')
-                # Fix: Ensure handler is properly registered. 
-                # Note: 'keydown.enter' on input sometimes needs prevent_default if it submits a form, but here it's standalone.
+            self.footer_row = ui.row().classes(f"w-full {theme['bg_header']} p-2 border-t {theme['border']} items-center shrink-0 gap-2")
+            with self.footer_row:
+                ui.icon('terminal')
+                self.cli_input = ui.input(placeholder="Send command...", on_change=None).classes(f"grow {theme['bg_input']}").props('dense outlined square')
+                self.inputs.append(self.cli_input)
                 self.cli_input.on('keydown.enter', self.send_cli_command)
-                
-                # History handlers
                 def handle_up():
                     if not app_state.cli_history: return
-                    if self.history_index == -1:
-                        self.history_index = len(app_state.cli_history) - 1
-                    else:
-                        self.history_index = max(0, self.history_index - 1)
+                    if self.history_index == -1: self.history_index = len(app_state.cli_history) - 1
+                    else: self.history_index = max(0, self.history_index - 1)
                     self.cli_input.value = app_state.cli_history[self.history_index]
-
                 def handle_down():
                     if not app_state.cli_history: return
-                    if self.history_index == -1: return # Already at bottom
-                    
+                    if self.history_index == -1: return
                     self.history_index += 1
                     if self.history_index >= len(app_state.cli_history):
                         self.history_index = -1
                         self.cli_input.value = ""
-                    else:
-                        self.cli_input.value = app_state.cli_history[self.history_index]
-                
+                    else: self.cli_input.value = app_state.cli_history[self.history_index]
                 self.cli_input.on('keydown.up', handle_up)
                 self.cli_input.on('keydown.down', handle_down)
-                
-                # Line Ending
-                ui.select(
-                    options=["LF", "CR", "CRLF"],
-                    value=app_state.cli_line_ending,
-                    on_change=lambda e: setattr(app_state, 'cli_line_ending', e.value)
-                ).props('dense options-dense borderless').classes('w-20')
-                
-                ui.button(icon='send', on_click=self.send_cli_command).props('flat round dense color=primary')
+                ui.select(options=["LF", "CR", "CRLF"], value=app_state.cli_line_ending, on_change=lambda e: setattr(app_state, 'cli_line_ending', e.value)).props('dense options-dense borderless').classes(f"w-20")
+                ui.button(icon='send', on_click=self.send_cli_command).props('flat round dense')
 
-        # Start timer
         ui.timer(0.2, self.update_loop)
 
 @ui.page('/')
 def main_page(client: Client):
     global serial_manager
-    if serial_manager is None:
-        serial_manager = SerialManager(on_log_received=handle_log)
-
+    if serial_manager is None: serial_manager = SerialManager(on_log_received=handle_log)
     viewer = LogViewer()
     viewer.build_ui()
 
 if __name__ in {"__main__", "__mp_main__"}:
     import sys
     is_bundled = getattr(sys, 'frozen', False)
-    ui.run(
-        title="SerialLens",
-        port=8080,
-        reload=False,
-        native=is_bundled,
-        window_size=(1000, 800) # Fix for default window size being too small
-    )
+    ui.run(title="SerialLens", port=8080, reload=False, native=False, show=False, window_size=(1000, 800))
