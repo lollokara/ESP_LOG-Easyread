@@ -3,7 +3,7 @@ import asyncio
 from serial_manager import SerialManager
 from log_parser import LogEntry
 from database import DatabaseManager
-from storage_utils import get_db_path
+from storage_utils import get_db_path, get_data_dir
 from session_manager import SessionManager as SessionManagerUI
 import threading
 import time
@@ -14,6 +14,7 @@ import datetime
 from collections import deque
 import fnmatch
 import sys
+import os
 import io
 
 # App Log Capture
@@ -59,6 +60,7 @@ db = DatabaseManager(db_path=db_path)
 # Persistence State (Survives Reloads)
 class AppState:
     def __init__(self):
+        # Default values
         self.port = None
         self.baud = 115200
         self.filter_level = ["V", "D", "I", "W", "E", "U"]
@@ -84,6 +86,37 @@ class AppState:
             "message": True
         }
         self.current_theme = "Dark"
+
+        # Load from disk
+        self.settings_path = os.path.join(get_data_dir(), "settings.json")
+        self.load_settings()
+
+    def load_settings(self):
+        if os.path.exists(self.settings_path):
+            try:
+                with open(self.settings_path, 'r') as f:
+                    data = json.load(f)
+                    # Load known keys
+                    if "current_theme" in data: self.current_theme = data["current_theme"]
+                    if "font_size" in data: self.font_size = data["font_size"]
+                    if "baud" in data: self.baud = data["baud"]
+                    if "port" in data: self.port = data["port"]
+                    # Add more fields as needed, primarily UI preferences
+            except Exception as e:
+                print(f"Failed to load settings: {e}")
+
+    def save_settings(self):
+        data = {
+            "current_theme": self.current_theme,
+            "font_size": self.font_size,
+            "baud": self.baud,
+            "port": self.port
+        }
+        try:
+            with open(self.settings_path, 'w') as f:
+                json.dump(data, f)
+        except Exception as e:
+            print(f"Failed to save settings: {e}")
 
 app_state = AppState()
 
@@ -593,6 +626,7 @@ class LogViewer:
 
     def on_theme_change(self, e):
         app_state.current_theme = e.value
+        app_state.save_settings()
         ui.run_javascript('location.reload()')
 
     def scroll_to_top(self):
