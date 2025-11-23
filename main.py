@@ -529,6 +529,13 @@ class LogViewer:
         ::-webkit-scrollbar-thumb:hover { background: #777; }
         </style>
         <script>
+        document.addEventListener('contextmenu', (e) => {
+            const selection = window.getSelection();
+            if (selection.toString().length > 0) {
+                navigator.clipboard.writeText(selection.toString());
+            }
+        });
+
         window.logManager = {
             append: function(id, html, maxLines, autoScroll) {
                 const el = document.getElementById(id);
