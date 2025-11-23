@@ -573,6 +573,8 @@ class LogViewer:
             ui.label("Logging").classes(f"text-xs font-bold")
             ui.select(options=["Auto-New", "Single"], value=app_state.session_mode, label="Session Mode", on_change=lambda e: setattr(app_state, 'session_mode', e.value)).classes(f"w-full {theme['bg_input']} {theme['text_primary']}").props('dense outlined').tooltip("Auto-New: New session on each connect")
 
+            ui.button("Manage Sessions", icon="history", on_click=self.session_manager_ui.open).classes(f"w-full text-xs border {theme['border']} mb-2").props('dense square outline')
+
             ui.checkbox("Save to File", value=serial_manager.save_to_file if serial_manager else False, on_change=lambda e: serial_manager.set_save_to_file(e.value))
             ui.switch("Mock Mode", value=mock_mode, on_change=self.on_mock_toggle)
 
