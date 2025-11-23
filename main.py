@@ -165,6 +165,26 @@ THEMES = {
         "log_hover": "hover:bg-[#3e3d32]", "log_V": "text-[#75715e]", "log_D": "text-[#66d9ef]",
         "log_I": "text-[#a6e22e]", "log_W": "text-[#fd971f]", "log_E": "text-[#f92672] font-bold",
         "button_active": "bg-[#a6e22e] text-[#272822]", "accent": "green-400", "log_bg": "bg-[#272822]"
+    },
+    "Glass Dark": {
+        "bg_main": "glass-bg-dark", # Custom class for mesh gradient
+        "bg_sidebar": "glass-panel-dark", # Transparent + Blur
+        "bg_header": "glass-panel-dark",
+        "bg_input": "glass-input-dark",
+        "text_primary": "text-white", "text_secondary": "text-gray-400", "border": "border-white/10",
+        "log_hover": "hover:bg-white/5", "log_V": "text-gray-400", "log_D": "text-blue-300",
+        "log_I": "text-green-300", "log_W": "text-yellow-300", "log_E": "text-red-400 font-bold",
+        "button_active": "bg-white/20 text-white backdrop-blur-md shadow-lg", "accent": "blue-300", "log_bg": "bg-transparent"
+    },
+    "Glass Light": {
+        "bg_main": "glass-bg-light",
+        "bg_sidebar": "glass-panel-light",
+        "bg_header": "glass-panel-light",
+        "bg_input": "glass-input-light",
+        "text_primary": "text-slate-800", "text_secondary": "text-slate-500", "border": "border-black/5",
+        "log_hover": "hover:bg-black/5", "log_V": "text-slate-500", "log_D": "text-blue-600",
+        "log_I": "text-green-600", "log_W": "text-yellow-600", "log_E": "text-red-600 font-bold",
+        "button_active": "bg-black/10 text-black backdrop-blur-md shadow-lg", "accent": "blue-600", "log_bg": "bg-transparent"
     }
 }
 
@@ -635,8 +655,74 @@ class LogViewer:
         ::-webkit-scrollbar-thumb:hover { background: #777; }
         /* Disable browser scroll anchoring to prevent fighting with JS manual adjustment */
         .q-scrollarea__container { overflow-anchor: none !important; }
+
+        /* Glassmorphism & Mouse Effects */
+        :root { --mouse-x: 50%; --mouse-y: 50%; }
+
+        .glass-bg-dark {
+            background: radial-gradient(circle at var(--mouse-x) var(--mouse-y), #1a1a2e 0%, #000000 100%);
+            background-attachment: fixed;
+        }
+        .glass-bg-light {
+            background: radial-gradient(circle at var(--mouse-x) var(--mouse-y), #e0eafc 0%, #cfdef3 100%);
+            background-attachment: fixed;
+        }
+
+        .glass-panel-dark {
+            background: rgba(20, 20, 20, 0.4);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+        .glass-panel-light {
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-right: 1px solid rgba(0, 0, 0, 0.05);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+        }
+
+        .glass-input-dark {
+            background: rgba(0, 0, 0, 0.3) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: white !important;
+            backdrop-filter: blur(5px);
+            transition: all 0.3s ease;
+        }
+        .glass-input-dark:focus-within {
+            background: rgba(0, 0, 0, 0.5) !important;
+            border-color: rgba(255, 255, 255, 0.3) !important;
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.05);
+        }
+
+        .glass-input-light {
+            background: rgba(255, 255, 255, 0.3) !important;
+            border: 1px solid rgba(0, 0, 0, 0.1) !important;
+            color: black !important;
+            backdrop-filter: blur(5px);
+            transition: all 0.3s ease;
+        }
+        .glass-input-light:focus-within {
+            background: rgba(255, 255, 255, 0.6) !important;
+            border-color: rgba(0, 0, 0, 0.2) !important;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Mouse Follower Reflection for Log Lines (Optional nice-to-have, but expensive on many elements.
+           Instead we apply a subtle gradient shift on hover or global reflection).
+           Let's try a global overlay reflection. */
         </style>
         <script>
+        document.addEventListener('mousemove', (e) => {
+            const x = e.clientX + 'px';
+            const y = e.clientY + 'px';
+            document.documentElement.style.setProperty('--mouse-x', x);
+            document.documentElement.style.setProperty('--mouse-y', y);
+        });
+
         document.addEventListener('contextmenu', (e) => {
             const selection = window.getSelection();
             const text = selection.toString();
