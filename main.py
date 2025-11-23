@@ -2,6 +2,9 @@ from nicegui import ui, app, Client
 import asyncio
 from serial_manager import SerialManager
 from log_parser import LogEntry
+from database import DatabaseManager
+from storage_utils import get_db_path
+from session_manager import SessionManager as SessionManagerUI
 import threading
 import time
 import random
@@ -16,6 +19,11 @@ serial_manager = None
 mock_mode = False
 mock_thread = None
 
+# Initialize Database
+db_path = get_db_path()
+print(f"Using database at: {db_path}")
+db = DatabaseManager(db_path=db_path)
+
 # Persistence State (Survives Reloads)
 class AppState:
     def __init__(self):
@@ -29,6 +37,8 @@ class AppState:
         self.save_to_file = False
         self.mock_mode = False
         self.realtime_timestamp = False
+        self.session_mode = "Auto-New"
+        self.current_session_id = None
         
         self.search_term = ""
         self.cli_history = []
@@ -45,15 +55,21 @@ class AppState:
 
 app_state = AppState()
 
+# Ensure a default session exists on app start
+if app_state.current_session_id is None:
+    app_state.current_session_id = db.create_session(f"Session {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", "App Start")
+
 global_lock = threading.Lock()
-global_logs = []
 unique_files = {"ALL"}
 unique_functions = {"ALL"}
 
 def handle_log(entry: LogEntry):
-    global global_logs, unique_files, unique_functions
+    # Insert into Database
+    if app_state.current_session_id is not None:
+        db.insert_log(app_state.current_session_id, entry)
+
+    # Update global unique filters (simple cache)
     with global_lock:
-        global_logs.append(entry)
         if entry.file != "UNDEFINED":
             unique_files.add(entry.file)
         if entry.function != "UNDEFINED":
@@ -131,14 +147,16 @@ class LogViewer:
         self.visible_columns = app_state.visible_columns.copy()
         self.current_theme = app_state.current_theme
         
-        self.history_index = -1
-        self.last_processed_index = 0
-        self.html_logs_primary = deque(maxlen=2000)
-        self.html_logs_secondary = deque(maxlen=500) 
+        self.log_container_id = f"log-container-{id(self)}"
+        self.log_container = None
+        self.window_size = 200 # Small fetch size for responsiveness
+        self.max_display_lines = 2000 # Max lines to keep in DOM
 
-        self.log_container_id_primary = f"log-container-primary-{id(self)}"
-        self.log_container_id_secondary = f"log-container-secondary-{id(self)}"
-        self.log_container_primary = None
+        self.scroll_offset = 0 # 0 means we are at the end (Live). > 0 means looking back.
+
+        # State for Infinite Scroll
+        self.fetching = False
+        self.earliest_loaded_offset = 0 # The offset (from start) of the top-most log in view
         
         self.drawer = None
         self.main_column = None
@@ -146,105 +164,145 @@ class LogViewer:
         self.footer_row = None
         self.scroll_area = None
         self.inputs = []
-        self.buttons = []
-        self.labels = []
-        self.separators = []
         self.selects = []
+        self.scroll_top_btn = None
+
+        self.last_fetched_count = 0
+        self.session_manager_ui = SessionManagerUI(db, self.load_session_by_id)
+
+    def load_session_by_id(self, session_id):
+        app_state.current_session_id = session_id
+        # Reload view
+        self.on_clear_logs()
+        asyncio.create_task(self.load_initial_view())
 
     def get_theme(self):
         return THEMES.get(self.current_theme, THEMES["Dark"])
 
-    def check_match(self, entry: LogEntry):
-        matches_search = True
-        if self.search_term:
-            text_to_search = entry.original.lower()
-            pattern = self.search_term.lower()
-            if '*' in pattern or '?' in pattern:
-                 if not fnmatch.fnmatch(text_to_search, f"*{pattern}*"): matches_search = False
-            else:
-                 if pattern not in text_to_search: matches_search = False
-        if not matches_search: return 0
-        if entry.level not in self.filter_level: return 2
-        if "ALL" not in self.filter_file and entry.file not in self.filter_file: return 2
-        if "ALL" not in self.filter_function and entry.function not in self.filter_function: return 2
-        return 1
-
     async def update_loop(self):
-        global global_logs
-        try:
-            if not self.log_container_primary or not self.log_container_primary.client.has_socket_connection: return
-        except Exception: return
+        """
+        Polls the database for new logs.
+        If we are at the bottom (auto_scroll=True), we append new logs.
+        """
+        if not self.log_container or not self.log_container.client.has_socket_connection: return
 
         try:
-            with global_lock:
-                current_len = len(global_logs)
-                if current_len > self.last_processed_index:
-                    new_entries = global_logs[self.last_processed_index:current_len]
-                    self.last_processed_index = current_len
-                    if hasattr(self, 'file_select'):
-                        current_opts = set(self.file_select.options)
-                        if len(unique_files) > len(current_opts):
-                            self.file_select.options = sorted(list(unique_files))
-                            self.file_select.update()
-                    if hasattr(self, 'function_select'):
-                        current_opts = set(self.function_select.options)
-                        if len(unique_functions) > len(current_opts):
-                            self.function_select.options = sorted(list(unique_functions))
-                            self.function_select.update()
+            if not app_state.current_session_id: return
 
-            if 'new_entries' in locals() and new_entries:
-                primary_chunk = []
-                secondary_chunk = []
-                for entry in new_entries:
-                    match_status = self.check_match(entry)
-                    if match_status == 1:
-                        html = self.format_log_html(entry, dimmed=False)
-                        self.html_logs_primary.append(html)
-                        primary_chunk.append(html)
-                    elif match_status == 2:
-                        html = self.format_log_html(entry, dimmed=True)
-                        self.html_logs_secondary.append(html)
-                        secondary_chunk.append(html)
+            # Fetch total count first to see if anything changed
+            total_logs = db.get_total_log_count(app_state.current_session_id, self.get_filters(), self.search_term)
 
-                if primary_chunk:
-                    joined_html = "".join(primary_chunk)
-                    js_html = json.dumps(joined_html)
-                    cmd = f'if(window.logManager) window.logManager.append("{self.log_container_id_primary}", {js_html}, 2000, {str(self.auto_scroll).lower()})'
-                    ui.run_javascript(cmd)
+            if total_logs > self.last_fetched_count:
+                # New logs arrived
+                if self.auto_scroll:
+                    # Fetch only the new items
+                    limit = min(self.window_size, total_logs - self.last_fetched_count)
+                    # For append, we want the *latest* entries but ordered chronologically.
+                    # get_logs uses OFFSET/LIMIT.
+                    # If total is 100, last_fetched is 95. We want offset 95, limit 5.
+                    new_logs = db.get_logs(
+                        app_state.current_session_id,
+                        limit=limit,
+                        offset=self.last_fetched_count,
+                        filters=self.get_filters(),
+                        search_term=self.search_term
+                    )
 
-                if secondary_chunk:
-                    joined_html = "".join(secondary_chunk)
-                    js_html = json.dumps(joined_html)
-                    cmd = f'if(window.logManager) window.logManager.append("{self.log_container_id_secondary}", {js_html}, 500, false)'
-                    ui.run_javascript(cmd)
-                    if not primary_chunk and self.auto_scroll and self.scroll_area:
-                        self.scroll_area.scroll_to(percent=1.0)
+                    if new_logs:
+                        html_chunk = "".join([self.format_log_html(l) for l in new_logs])
+                        js_html = json.dumps(html_chunk)
+                        # Append to DOM
+                        ui.run_javascript(f'if(window.logManager) window.logManager.append("{self.log_container_id}", {js_html}, {self.max_display_lines}, true)')
+
+                self.last_fetched_count = total_logs
+                self.update_filter_options()
+
         except Exception as e:
             print("Error in update_loop:")
             traceback.print_exc()
 
-    def refresh_log_view(self):
-        if not self.log_container_primary: return
-        self.html_logs_primary.clear()
-        self.html_logs_secondary.clear()
-        with global_lock:
-            current_len = len(global_logs)
-            scan_start = max(0, current_len - 5000)
-            entries_to_scan = global_logs[scan_start:]
-            self.last_processed_index = current_len
-        for entry in entries_to_scan:
-            match_status = self.check_match(entry)
-            if match_status == 1: self.html_logs_primary.append(self.format_log_html(entry, dimmed=False))
-            elif match_status == 2: self.html_logs_secondary.append(self.format_log_html(entry, dimmed=True))
-        while len(self.html_logs_primary) > 2000: self.html_logs_primary.popleft()
-        while len(self.html_logs_secondary) > 500: self.html_logs_secondary.popleft()
-        joined_html_p = "".join(self.html_logs_primary)
-        js_html_p = json.dumps(joined_html_p)
-        ui.run_javascript(f'if(window.logManager) window.logManager.setContent("{self.log_container_id_primary}", {js_html_p})')
-        joined_html_s = "".join(self.html_logs_secondary)
-        js_html_s = json.dumps(joined_html_s)
-        ui.run_javascript(f'if(window.logManager) window.logManager.setContent("{self.log_container_id_secondary}", {js_html_s})')
-        if self.auto_scroll and self.scroll_area: self.scroll_area.scroll_to(percent=1.0)
+    def update_filter_options(self):
+         # Update select options periodically
+         if hasattr(self, 'file_select'):
+            current_opts = set(self.file_select.options)
+            if len(unique_files) > len(current_opts):
+                self.file_select.options = sorted(list(unique_files))
+                self.file_select.update()
+         if hasattr(self, 'function_select'):
+            current_opts = set(self.function_select.options)
+            if len(unique_functions) > len(current_opts):
+                self.function_select.options = sorted(list(unique_functions))
+                self.function_select.update()
+
+    def get_filters(self):
+        return {
+            "level": self.filter_level,
+            "file": self.filter_file,
+            "function": self.filter_function
+        }
+
+    async def load_initial_view(self):
+        """Loads the last N logs for the initial view"""
+        if not app_state.current_session_id: return
+
+        total_logs = db.get_total_log_count(app_state.current_session_id, self.get_filters(), self.search_term)
+        self.last_fetched_count = total_logs
+
+        # Load last N logs
+        start_offset = max(0, total_logs - self.max_display_lines)
+        self.earliest_loaded_offset = start_offset
+
+        logs = db.get_logs(
+            app_state.current_session_id,
+            limit=self.max_display_lines,
+            offset=start_offset,
+            filters=self.get_filters(),
+            search_term=self.search_term
+        )
+
+        html = "".join([self.format_log_html(l) for l in logs])
+        js_html = json.dumps(html)
+        ui.run_javascript(f'if(window.logManager) window.logManager.setContent("{self.log_container_id}", {js_html})')
+
+        # Scroll to bottom
+        if self.scroll_area:
+            self.scroll_area.scroll_to(percent=1.0)
+
+    async def load_older_logs(self):
+        """Called when user scrolls to top"""
+        if self.fetching or not app_state.current_session_id or self.earliest_loaded_offset <= 0: return
+        self.fetching = True
+
+        try:
+            # We want to load 'window_size' logs BEFORE 'earliest_loaded_offset'
+            fetch_limit = self.window_size
+            fetch_offset = max(0, self.earliest_loaded_offset - fetch_limit)
+
+            # If we are near 0, we might request fewer than window_size
+            real_limit = self.earliest_loaded_offset - fetch_offset
+
+            if real_limit <= 0: return
+
+            logs = db.get_logs(
+                app_state.current_session_id,
+                limit=real_limit,
+                offset=fetch_offset,
+                filters=self.get_filters(),
+                search_term=self.search_term
+            )
+
+            if logs:
+                html = "".join([self.format_log_html(l) for l in logs])
+                js_html = json.dumps(html)
+                # Use prepend in JS
+                ui.run_javascript(f'if(window.logManager) window.logManager.prepend("{self.log_container_id}", {js_html})')
+                self.earliest_loaded_offset = fetch_offset
+
+        except Exception as e:
+            print("Error loading older logs:")
+            traceback.print_exc()
+        finally:
+            self.fetching = False
 
     def format_log_html(self, entry: LogEntry, dimmed: bool = False) -> str:
         theme = self.get_theme()
@@ -274,7 +332,8 @@ class LogViewer:
             cols.append(f'<div class="text-orange-500 w-40 shrink-0 truncate" title="{entry.function}">{func_str}</div>')
         if self.visible_columns.get("message", True): cols.append(f'<div class="{color_class} grow break-all select-text">{safe_msg}</div>')
         inner_html = "".join(cols)
-        return f"""<div class="log-line w-full flex gap-1 font-mono items-start no-wrap {theme['log_hover']} select-text {base_opacity} animate-fade-in" style="{font_style}">{inner_html}</div>"""
+        # Add data-id for scroll tracking
+        return f"""<div class="log-line w-full flex gap-1 font-mono items-start no-wrap {theme['log_hover']} select-text {base_opacity} animate-fade-in" style="{font_style}" data-id="{entry.id if hasattr(entry, 'id') else 0}">{inner_html}</div>"""
 
     def _handle_smart_all_selection(self, new_val, current_val, ui_element):
         result = new_val
@@ -293,17 +352,17 @@ class LogViewer:
     def on_file_filter_change(self, e):
         self.filter_file = self._handle_smart_all_selection(e.value, self.filter_file, self.file_select)
         app_state.filter_file = self.filter_file
-        self.refresh_log_view()
+        asyncio.create_task(self.load_initial_view())
 
     def on_function_filter_change(self, e):
         self.filter_function = self._handle_smart_all_selection(e.value, self.filter_function, self.function_select)
         app_state.filter_function = self.filter_function
-        self.refresh_log_view()
+        asyncio.create_task(self.load_initial_view())
 
     def on_level_filter_change(self, e):
         self.filter_level = e.value
         app_state.filter_level = self.filter_level
-        self.refresh_log_view()
+        asyncio.create_task(self.load_initial_view())
 
     def on_autoscroll_change(self, e):
         self.auto_scroll = e.value
@@ -313,31 +372,40 @@ class LogViewer:
     def on_search_change(self, e):
         self.search_term = e.value
         app_state.search_term = e.value
-        self.refresh_log_view()
+        asyncio.create_task(self.load_initial_view())
         
     def on_font_size_change(self, delta):
         self.font_size = max(8, min(30, self.font_size + delta))
         app_state.font_size = self.font_size
-        self.refresh_log_view()
+        asyncio.create_task(self.load_initial_view())
         
     def on_column_toggle(self, col_name, value):
         self.visible_columns[col_name] = value
         app_state.visible_columns = self.visible_columns
-        self.refresh_log_view()
+        asyncio.create_task(self.load_initial_view())
 
     def on_clear_logs(self):
-        global global_logs
-        with global_lock: global_logs.clear()
-        self.html_logs_primary.clear()
-        self.html_logs_secondary.clear()
-        if self.log_container_primary: ui.run_javascript(f'if(window.logManager) window.logManager.setContent("{self.log_container_id_primary}", "")')
-        if self.log_container_secondary: ui.run_javascript(f'if(window.logManager) window.logManager.setContent("{self.log_container_id_secondary}", "")')
-        self.last_processed_index = 0
+        # Clear View Only
+        if self.log_container: ui.run_javascript(f'if(window.logManager) window.logManager.setContent("{self.log_container_id}", "")')
+        self.last_fetched_count = 0 # Reset fetch counter so we re-fetch if needed?
+        # Actually, if we clear view, we might want to reload fresh.
+        # But user wants "Clear Logs" -> Clear screen.
+        # If we reload, they appear again.
+        # So we should probably mark a "hidden_before" timestamp or similar.
+        # For now, just clear the DOM.
 
     def on_connect_toggle(self, e):
         port = self.port_select.value
         baud = int(self.baud_select.value)
         if e.value: 
+            if app_state.session_mode == "Auto-New":
+                 if app_state.current_session_id:
+                     db.end_session(app_state.current_session_id)
+                 new_name = f"Session {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                 app_state.current_session_id = db.create_session(new_name, f"{port}@{baud}")
+                 self.on_clear_logs()
+                 ui.notify("New Session Started")
+
             app_state.port = port
             app_state.baud = baud
             if serial_manager.connect(port, baud): ui.notify(f"Connected to {port}")
@@ -387,17 +455,33 @@ class LogViewer:
             self.cli_input.value = ""
         else:
             ui.notify("Not Connected", type='warning')
-            # Keep input text
 
     def on_theme_change(self, e):
         app_state.current_theme = e.value
         ui.run_javascript('location.reload()')
 
-    def build_ui(self):
-        # Initialize Quasar Dark Mode via JS to avoid Python boolean injection bug
-        is_dark = str(self.current_theme != "Light").lower()
+    def scroll_to_top(self):
+        if self.scroll_area:
+            self.scroll_area.scroll_to(percent=0.0)
+            # Logic to load very first logs if not present?
+            # For now, just scroll top.
 
+    def on_scroll(self, e):
+        # Infinite Scroll Trigger
+        if e.vertical_percentage < 0.05: # Top 5%
+            asyncio.create_task(self.load_older_logs())
+
+        # Show/Hide Scroll to Top Button
+        if self.scroll_top_btn:
+             if e.vertical_percentage > 0.1:
+                 self.scroll_top_btn.classes(remove='hidden')
+             else:
+                 self.scroll_top_btn.classes(add='hidden')
+
+    def build_ui(self):
+        is_dark = str(self.current_theme != "Light").lower()
         theme = self.get_theme()
+
         ui.add_head_html("""
         <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
@@ -418,17 +502,31 @@ class LogViewer:
                 const el = document.getElementById(id);
                 if (!el) return;
                 const scrollTarget = el.closest('.q-scrollarea').querySelector('.q-scrollarea__container');
+
+                // Check if user is near bottom before appending to decide on auto-scroll override
+                const isNearBottom = (scrollTarget.scrollHeight - scrollTarget.scrollTop - scrollTarget.clientHeight) < 50;
+
                 el.insertAdjacentHTML('beforeend', html);
-                let removedHeight = 0;
-                let countToRemove = el.childElementCount - maxLines;
-                if (countToRemove > 0) {
-                    if (!autoScroll && scrollTarget) {
-                        for(let i=0; i<countToRemove; i++) { removedHeight += el.children[i].offsetHeight; }
-                    }
-                    while (el.childElementCount > maxLines) { el.firstElementChild.remove(); }
-                    if (!autoScroll && scrollTarget && removedHeight > 0) { scrollTarget.scrollTop -= removedHeight; }
+
+                // Cleanup old logs
+                while (el.childElementCount > maxLines) { el.firstElementChild.remove(); }
+
+                if (autoScroll || isNearBottom) {
+                    scrollTarget.scrollTop = scrollTarget.scrollHeight;
                 }
-                if (autoScroll && scrollTarget) { scrollTarget.scrollTop = scrollTarget.scrollHeight; }
+            },
+            prepend: function(id, html) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const scrollTarget = el.closest('.q-scrollarea').querySelector('.q-scrollarea__container');
+                const oldHeight = scrollTarget.scrollHeight;
+                const oldTop = scrollTarget.scrollTop;
+
+                el.insertAdjacentHTML('afterbegin', html);
+
+                // Maintain scroll position
+                const newHeight = scrollTarget.scrollHeight;
+                scrollTarget.scrollTop = oldTop + (newHeight - oldHeight);
             },
             setContent: function(id, html) {
                 const el = document.getElementById(id);
@@ -438,10 +536,8 @@ class LogViewer:
         </script>
         """)
 
-        # Force correct dark mode on load
         ui.run_javascript(f'Quasar.Dark.set({is_dark})')
 
-        # 1. Drawer defined at top level
         with ui.left_drawer(value=True).classes(f"q-pa-md {theme['bg_sidebar']} {theme['text_primary']} transition-all duration-300 border-r {theme['border']}") as self.drawer:
             ui.markdown("### SerialLens").classes('font-bold')
             ui.label("Appearance").classes(f"text-xs font-bold mt-4")
@@ -475,6 +571,8 @@ class LogViewer:
 
             ui.separator().classes(f"my-4")
             ui.label("Logging").classes(f"text-xs font-bold")
+            ui.select(options=["Auto-New", "Single"], value=app_state.session_mode, label="Session Mode", on_change=lambda e: setattr(app_state, 'session_mode', e.value)).classes(f"w-full {theme['bg_input']} {theme['text_primary']}").props('dense outlined').tooltip("Auto-New: New session on each connect")
+
             ui.checkbox("Save to File", value=serial_manager.save_to_file if serial_manager else False, on_change=lambda e: serial_manager.set_save_to_file(e.value))
             ui.switch("Mock Mode", value=mock_mode, on_change=self.on_mock_toggle)
 
@@ -493,7 +591,6 @@ class LogViewer:
             ui.separator().classes(f"my-4")
             ui.button("Clear Logs", on_click=self.on_clear_logs).classes('w-full bg-red-600 text-white rounded-none font-bold shadow-md')
 
-        # 2. Main Column defined at top level, NOT containing the drawer
         self.main_column = ui.column().classes(f"w-full h-screen p-0 overflow-hidden no-wrap {theme['bg_main']} {theme['text_primary']}")
         with self.main_column:
             self.header_row = ui.row().classes(f"w-full {theme['bg_header']} p-2 border-b {theme['border']} items-center shrink-0 gap-2 transition-colors duration-300")
@@ -507,20 +604,21 @@ class LogViewer:
                 ui.switch("Time", value=app_state.realtime_timestamp, on_change=lambda e: setattr(app_state, 'realtime_timestamp', e.value)).props('dense').tooltip("Real-time Timestamp")
                 ui.switch("Scroll", value=app_state.auto_scroll, on_change=self.on_autoscroll_change).props('dense').tooltip("Auto-scroll")
 
-            self.scroll_area = ui.scroll_area().classes(f"w-full grow {theme['log_bg']} select-text")
+            # Scroll Area with on_scroll listener
+            self.scroll_area = ui.scroll_area(on_scroll=self.on_scroll).classes(f"w-full grow {theme['log_bg']} select-text")
             with self.scroll_area:
                 with ui.column().classes('w-full min-h-full'):
-                    self.log_container_primary = ui.element('div').props(f'id="{self.log_container_id_primary}"').classes('w-full flex flex-col select-text p-2')
-                    ui.separator().classes(f"my-4 opacity-30")
-                    ui.label("Filtered Matches (Search Only)").classes(f"text-xs ml-2")
-                    self.log_container_secondary = ui.element('div').props(f'id="{self.log_container_id_secondary}"').classes(f"w-full flex flex-col select-text p-2 {theme['bg_sidebar']} border-t {theme['border']}")
+                    self.log_container = ui.element('div').props(f'id="{self.log_container_id}"').classes('w-full flex flex-col select-text p-2')
+
+            # Floating "Scroll to Top" Button
+            with ui.row().classes('absolute right-8 bottom-24 z-50'):
+                self.scroll_top_btn = ui.button(icon='arrow_upward', on_click=self.scroll_to_top).props('round color=blue size=lg glossy').classes('hidden opacity-80 hover:opacity-100 transition-opacity')
 
             self.footer_row = ui.row().classes(f"w-full {theme['bg_header']} p-2 border-t {theme['border']} items-center shrink-0 gap-2")
             with self.footer_row:
                 ui.icon('terminal')
                 self.cli_input = ui.input(placeholder="Send command...", on_change=None).classes(f"grow {theme['bg_input']} {theme['text_primary']}").props('dense outlined square')
                 self.inputs.append(self.cli_input)
-                # Bind Enter Key Robustly
                 self.cli_input.on('keydown.enter', self.send_cli_command)
 
                 def handle_up():
@@ -542,6 +640,8 @@ class LogViewer:
                 ui.button(icon='send', on_click=self.send_cli_command).props('flat round dense')
 
         ui.timer(0.2, self.update_loop)
+        # Initial load
+        ui.timer(0.5, lambda: asyncio.create_task(self.load_initial_view()), once=True)
 
 @ui.page('/')
 def main_page(client: Client):
