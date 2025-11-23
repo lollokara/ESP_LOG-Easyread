@@ -206,6 +206,9 @@ class LogViewer:
         self.app_log_dialog = None
         self.app_log_content = None
 
+        # Debug UI
+        self.debug_label = None
+
     def load_session_by_id(self, session_id):
         app_state.current_session_id = session_id
         # Reload view
@@ -230,7 +233,6 @@ class LogViewer:
 
             # Only update if Auto Scroll is ON
             if self.auto_scroll and total_logs > self.latest_loaded_offset:
-                print(f"[Update] Auto-scroll ON. Total: {total_logs}, Latest: {self.latest_loaded_offset}. Fetching...")
                 # New logs arrived and we are watching live
                 limit = min(self.window_size, total_logs - self.latest_loaded_offset)
 
@@ -257,12 +259,19 @@ class LogViewer:
                     if current_count > self.max_display_lines:
                         dropped = current_count - self.max_display_lines
                         self.earliest_loaded_offset += dropped
-                        print(f"[Update] Pruned {dropped} lines from TOP. New Earliest: {self.earliest_loaded_offset}")
 
             # Keep filters updated regardless
             if total_logs > self.last_fetched_count:
                 self.last_fetched_count = total_logs
                 self.update_filter_options()
+
+            # Update Debug Label
+            if self.debug_label:
+                self.debug_label.set_text(
+                    f"Total: {total_logs} | Range: {self.earliest_loaded_offset}-{self.latest_loaded_offset} | "
+                    f"Count: {self.latest_loaded_offset - self.earliest_loaded_offset} | "
+                    f"Auto: {self.auto_scroll}"
+                )
 
         except Exception as e:
             print("Error in update_loop:")
@@ -346,6 +355,7 @@ class LogViewer:
             )
 
             if logs:
+                ui.notify(f"Fetching older logs... ({len(logs)})", position='top')
                 html = "".join([self.format_log_html(l) for l in logs])
                 js_html = json.dumps(html)
                 # Use prepend in JS with max lines to prune bottom
@@ -355,11 +365,6 @@ class LogViewer:
 
                 # If we prepended, we might have dropped from bottom
                 current_count = self.latest_loaded_offset - self.earliest_loaded_offset
-                # (Note: This is a bit of an estimation if JS and Python drift, but we trust logic)
-                # The actual count in DOM is now min(current_count + len(logs), max_display_lines)
-                # Wait, current_count before append was (latest - earliest_old).
-                # New count = (latest - earliest_new).
-                # If > max, we drop from bottom, so 'latest' moves back.
 
                 # Recalculate 'latest' based on strict window size
                 virtual_end = self.earliest_loaded_offset + self.max_display_lines
@@ -381,7 +386,6 @@ class LogViewer:
         total_logs = db.get_total_log_count(app_state.current_session_id, self.get_filters(), self.search_term)
         if self.latest_loaded_offset >= total_logs: return
 
-        print(f"[ScrollDown] Loading newer logs. Current Latest: {self.latest_loaded_offset}, Total: {total_logs}")
         self.fetching = True
         try:
             fetch_limit = self.window_size
@@ -395,6 +399,7 @@ class LogViewer:
             )
 
             if logs:
+                ui.notify(f"Fetching newer logs... ({len(logs)})", position='bottom')
                 html = "".join([self.format_log_html(l) for l in logs])
                 js_html = json.dumps(html)
                 # Append, NO auto-scroll force
@@ -407,7 +412,6 @@ class LogViewer:
                 if current_count > self.max_display_lines:
                     dropped = current_count - self.max_display_lines
                     self.earliest_loaded_offset += dropped
-                    print(f"[ScrollDown] Pruned {dropped} lines from TOP. New Earliest: {self.earliest_loaded_offset}")
 
         except Exception as e:
             print("Error loading newer logs:")
@@ -806,6 +810,9 @@ class LogViewer:
                 self.cli_input = ui.input(placeholder="Send command...", on_change=None).classes(f"grow {theme['bg_input']} {theme['text_primary']}").props('dense outlined square')
                 self.inputs.append(self.cli_input)
                 self.cli_input.on('keydown.enter', self.send_cli_command)
+
+                # Debug Label
+                self.debug_label = ui.label("Init...").classes('text-[10px] opacity-50 font-mono')
 
                 def handle_up():
                     if not app_state.cli_history: return
