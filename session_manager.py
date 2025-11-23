@@ -12,7 +12,8 @@ class SessionManager:
         self.dialog = None
         self.grid = None
 
-    def open(self):
+    def build_dialog(self):
+        # Build the dialog once attached to the page context
         with ui.dialog() as self.dialog, ui.card().classes('w-full max-w-4xl h-[80vh] flex flex-col'):
             with ui.row().classes('w-full items-center justify-between'):
                 ui.label("Session Manager").classes('text-xl font-bold')
@@ -20,13 +21,21 @@ class SessionManager:
 
             ui.separator().classes('my-2')
 
-            # Sessions Grid/List
+            # Placeholder for grid
+            self.grid_container = ui.element('div').classes('grow w-full overflow-hidden')
+
+            # Initial render
             self.refresh_grid()
 
-            self.dialog.open()
+    def open(self):
+        if not self.dialog:
+            self.build_dialog()
+        self.refresh_grid()
+        self.dialog.open()
 
     def refresh_grid(self):
-        if self.grid: self.grid.clear()
+        if not hasattr(self, 'grid_container'): return
+        self.grid_container.clear()
 
         sessions = self.db.get_sessions()
 
@@ -38,12 +47,7 @@ class SessionManager:
             {'name': 'actions', 'label': 'Actions', 'field': 'actions', 'align': 'center'}
         ]
 
-        with ui.element('div').classes('grow w-full overflow-hidden') as container:
-            self.grid = container
-
-            # Using AG Grid or simple table? Quasar Table is good.
-            # NiceGUI ui.table is easy.
-
+        with self.grid_container:
             table = ui.table(columns=columns, rows=sessions, row_key='id', pagination=10).classes('w-full h-full')
 
             # Custom slot for actions
@@ -79,8 +83,7 @@ class SessionManager:
         session_id = row['id']
         self.db.delete_session(session_id)
         ui.notify(f"Deleted session: {row['name']}")
-        self.dialog.close()
-        self.open() # Re-open to refresh
+        self.refresh_grid()
 
     def export_session(self, row):
         session_id = row['id']

@@ -166,9 +166,14 @@ class LogViewer:
         self.inputs = []
         self.selects = []
         self.scroll_top_btn = None
+        self.scroll_bottom_btn = None
 
         self.last_fetched_count = 0
         self.session_manager_ui = SessionManagerUI(db, self.load_session_by_id)
+
+        # Simple App Logger
+        self.app_log_dialog = None
+        self.app_log_content = None
 
     def load_session_by_id(self, session_id):
         app_state.current_session_id = session_id
@@ -194,25 +199,25 @@ class LogViewer:
 
             if total_logs > self.last_fetched_count:
                 # New logs arrived
-                if self.auto_scroll:
-                    # Fetch only the new items
-                    limit = min(self.window_size, total_logs - self.last_fetched_count)
-                    # For append, we want the *latest* entries but ordered chronologically.
-                    # get_logs uses OFFSET/LIMIT.
-                    # If total is 100, last_fetched is 95. We want offset 95, limit 5.
-                    new_logs = db.get_logs(
-                        app_state.current_session_id,
-                        limit=limit,
-                        offset=self.last_fetched_count,
-                        filters=self.get_filters(),
-                        search_term=self.search_term
-                    )
+                # Fetch only the new items
+                limit = min(self.window_size, total_logs - self.last_fetched_count)
+                # For append, we want the *latest* entries but ordered chronologically.
+                # get_logs uses OFFSET/LIMIT.
+                # If total is 100, last_fetched is 95. We want offset 95, limit 5.
+                new_logs = db.get_logs(
+                    app_state.current_session_id,
+                    limit=limit,
+                    offset=self.last_fetched_count,
+                    filters=self.get_filters(),
+                    search_term=self.search_term
+                )
 
-                    if new_logs:
-                        html_chunk = "".join([self.format_log_html(l) for l in new_logs])
-                        js_html = json.dumps(html_chunk)
-                        # Append to DOM
-                        ui.run_javascript(f'if(window.logManager) window.logManager.append("{self.log_container_id}", {js_html}, {self.max_display_lines}, true)')
+                if new_logs:
+                    html_chunk = "".join([self.format_log_html(l) for l in new_logs])
+                    js_html = json.dumps(html_chunk)
+                    # Append to DOM. Pass auto_scroll status to JS.
+                    auto_scroll_js = 'true' if self.auto_scroll else 'false'
+                    ui.run_javascript(f'if(window.logManager) window.logManager.append("{self.log_container_id}", {js_html}, {self.max_display_lines}, {auto_scroll_js})')
 
                 self.last_fetched_count = total_logs
                 self.update_filter_options()
@@ -244,29 +249,35 @@ class LogViewer:
     async def load_initial_view(self):
         """Loads the last N logs for the initial view"""
         if not app_state.current_session_id: return
+        if not self.log_container: return
 
-        total_logs = db.get_total_log_count(app_state.current_session_id, self.get_filters(), self.search_term)
-        self.last_fetched_count = total_logs
+        try:
+            total_logs = db.get_total_log_count(app_state.current_session_id, self.get_filters(), self.search_term)
+            self.last_fetched_count = total_logs
 
-        # Load last N logs
-        start_offset = max(0, total_logs - self.max_display_lines)
-        self.earliest_loaded_offset = start_offset
+            # Load last N logs
+            start_offset = max(0, total_logs - self.max_display_lines)
+            self.earliest_loaded_offset = start_offset
 
-        logs = db.get_logs(
-            app_state.current_session_id,
-            limit=self.max_display_lines,
-            offset=start_offset,
-            filters=self.get_filters(),
-            search_term=self.search_term
-        )
+            logs = db.get_logs(
+                app_state.current_session_id,
+                limit=self.max_display_lines,
+                offset=start_offset,
+                filters=self.get_filters(),
+                search_term=self.search_term
+            )
 
-        html = "".join([self.format_log_html(l) for l in logs])
-        js_html = json.dumps(html)
-        ui.run_javascript(f'if(window.logManager) window.logManager.setContent("{self.log_container_id}", {js_html})')
+            html = "".join([self.format_log_html(l) for l in logs])
+            js_html = json.dumps(html)
+            # Use client context to avoid slot errors
+            with self.log_container.client:
+                 ui.run_javascript(f'if(window.logManager) window.logManager.setContent("{self.log_container_id}", {js_html})')
 
-        # Scroll to bottom
-        if self.scroll_area:
-            self.scroll_area.scroll_to(percent=1.0)
+            # Scroll to bottom
+            if self.scroll_area:
+                self.scroll_area.scroll_to(percent=1.0)
+        except Exception:
+            traceback.print_exc()
 
     async def load_older_logs(self):
         """Called when user scrolls to top"""
@@ -463,8 +474,10 @@ class LogViewer:
     def scroll_to_top(self):
         if self.scroll_area:
             self.scroll_area.scroll_to(percent=0.0)
-            # Logic to load very first logs if not present?
-            # For now, just scroll top.
+
+    def scroll_to_bottom(self):
+        if self.scroll_area:
+            self.scroll_area.scroll_to(percent=1.0)
 
     def on_scroll(self, e):
         # Infinite Scroll Trigger
@@ -477,6 +490,25 @@ class LogViewer:
                  self.scroll_top_btn.classes(remove='hidden')
              else:
                  self.scroll_top_btn.classes(add='hidden')
+
+        # Show/Hide Scroll to Bottom Button
+        if self.scroll_bottom_btn:
+             if e.vertical_percentage < 0.95:
+                 self.scroll_bottom_btn.classes(remove='hidden')
+             else:
+                 self.scroll_bottom_btn.classes(add='hidden')
+
+    def open_app_logs(self):
+        with ui.dialog() as self.app_log_dialog, ui.card().classes('w-full max-w-4xl h-[80vh] flex flex-col'):
+            with ui.row().classes('w-full items-center justify-between'):
+                ui.label("App Logs").classes('text-xl font-bold')
+                ui.button(icon='close', on_click=self.app_log_dialog.close).props('flat round dense')
+            ui.separator()
+            with ui.scroll_area().classes('w-full grow bg-black text-white p-2 font-mono text-xs'):
+                 # Simple output of recent events or just a placeholder if no logger
+                 ui.label("Application logs would appear here. (Currently logging to stdout)").classes('text-gray-500')
+                 # We could read from a file if one exists
+            self.app_log_dialog.open()
 
     def build_ui(self):
         is_dark = str(self.current_theme != "Light").lower()
@@ -574,6 +606,7 @@ class LogViewer:
             ui.select(options=["Auto-New", "Single"], value=app_state.session_mode, label="Session Mode", on_change=lambda e: setattr(app_state, 'session_mode', e.value)).classes(f"w-full {theme['bg_input']} {theme['text_primary']}").props('dense outlined').tooltip("Auto-New: New session on each connect")
 
             ui.button("Manage Sessions", icon="history", on_click=self.session_manager_ui.open).classes(f"w-full text-xs border {theme['border']} mb-2").props('dense square outline')
+            ui.button("App Logs", icon="bug_report", on_click=self.open_app_logs).classes(f"w-full text-xs border {theme['border']} mb-2").props('dense square outline')
 
             ui.checkbox("Save to File", value=serial_manager.save_to_file if serial_manager else False, on_change=lambda e: serial_manager.set_save_to_file(e.value))
             ui.switch("Mock Mode", value=mock_mode, on_change=self.on_mock_toggle)
@@ -613,8 +646,9 @@ class LogViewer:
                     self.log_container = ui.element('div').props(f'id="{self.log_container_id}"').classes('w-full flex flex-col select-text p-2')
 
             # Floating "Scroll to Top" Button
-            with ui.row().classes('absolute right-8 bottom-24 z-50'):
+            with ui.column().classes('absolute right-8 bottom-24 z-50 gap-2'):
                 self.scroll_top_btn = ui.button(icon='arrow_upward', on_click=self.scroll_to_top).props('round color=blue size=lg glossy').classes('hidden opacity-80 hover:opacity-100 transition-opacity')
+                self.scroll_bottom_btn = ui.button(icon='arrow_downward', on_click=self.scroll_to_bottom).props('round color=blue size=lg glossy').classes('hidden opacity-80 hover:opacity-100 transition-opacity')
 
             self.footer_row = ui.row().classes(f"w-full {theme['bg_header']} p-2 border-t {theme['border']} items-center shrink-0 gap-2")
             with self.footer_row:
