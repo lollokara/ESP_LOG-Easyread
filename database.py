@@ -110,6 +110,11 @@ class DatabaseManager:
         conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
         conn.commit()
 
+    def delete_empty_sessions(self):
+        conn = self.get_connection()
+        conn.execute("DELETE FROM sessions WHERE log_count = 0")
+        conn.commit()
+
     def clear_session_logs(self, session_id: int):
         conn = self.get_connection()
         conn.execute("DELETE FROM logs WHERE session_id = ?", (session_id,))

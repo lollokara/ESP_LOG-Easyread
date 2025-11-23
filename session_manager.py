@@ -37,6 +37,7 @@ class SessionManager:
         if not hasattr(self, 'grid_container'): return
         self.grid_container.clear()
 
+        self.db.delete_empty_sessions()
         sessions = self.db.get_sessions()
         # Pre-format timestamps to avoid lambda in column definition (not JSON serializable)
         for s in sessions:

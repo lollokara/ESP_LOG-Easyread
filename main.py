@@ -579,8 +579,27 @@ class LogViewer:
 
                 el.insertAdjacentHTML('beforeend', html);
 
-                // Cleanup old logs
-                while (el.childElementCount > maxLines) { el.firstElementChild.remove(); }
+                // Cleanup old logs with precise scroll anchoring
+                let removedHeight = 0;
+                let countToRemove = el.childElementCount - maxLines;
+
+                if (countToRemove > 0) {
+                    // Calculate height of elements to be removed
+                    // We must measure BEFORE removing
+                    if (!autoScroll && !isNearBottom) {
+                        for(let i=0; i<countToRemove; i++) {
+                            // Use getBoundingClientRect for sub-pixel precision + margins (if any)
+                            // Note: standard block elements usually don't overlap margins, but simple height is safer if no margins
+                            removedHeight += el.children[i].getBoundingClientRect().height;
+                        }
+                    }
+
+                    for(let i=0; i<countToRemove; i++) { el.firstElementChild.remove(); }
+
+                    if (!autoScroll && !isNearBottom && removedHeight > 0) {
+                        scrollTarget.scrollTop -= removedHeight;
+                    }
+                }
 
                 if (autoScroll || isNearBottom) {
                     scrollTarget.scrollTop = scrollTarget.scrollHeight;
