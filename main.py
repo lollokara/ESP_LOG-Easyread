@@ -638,10 +638,10 @@ class LogViewer:
             self.scroll_area.scroll_to(percent=1.0)
 
     def on_scroll(self, e):
-        # Infinite Scroll Trigger
-        if e.vertical_percentage < 0.05: # Top 5%
+        # Infinite Scroll Trigger - Widened thresholds for better reliability
+        if e.vertical_percentage < 0.1: # Top 10%
             asyncio.create_task(self.load_older_logs())
-        elif e.vertical_percentage > 0.95 and not self.auto_scroll: # Bottom 5% and NOT auto-scrolling
+        elif e.vertical_percentage > 0.9 and not self.auto_scroll: # Bottom 10% and NOT auto-scrolling
             asyncio.create_task(self.load_newer_logs())
 
         # Show/Hide Scroll to Top Button
@@ -917,7 +917,13 @@ class LogViewer:
             self.scroll_area = ui.scroll_area(on_scroll=self.on_scroll).classes(f"w-full grow {theme['log_bg']} select-text")
             with self.scroll_area:
                 with ui.column().classes('w-full min-h-full'):
+                    # Manual Load Button (Top)
+                    ui.button("Load Older Logs", on_click=self.load_older_logs).props('flat dense size=sm').classes('w-full text-gray-500 opacity-50 hover:opacity-100')
+
                     self.log_container = ui.element('div').props(f'id="{self.log_container_id}"').classes('w-full flex flex-col select-text p-2')
+
+                    # Manual Load Button (Bottom)
+                    ui.button("Load Newer Logs", on_click=self.load_newer_logs).props('flat dense size=sm').classes('w-full text-gray-500 opacity-50 hover:opacity-100')
 
             # Floating "Scroll to Top" Button
             with ui.column().classes('absolute right-8 bottom-24 z-50 gap-2'):
