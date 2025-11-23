@@ -38,11 +38,14 @@ class SessionManager:
         self.grid_container.clear()
 
         sessions = self.db.get_sessions()
+        # Pre-format timestamps to avoid lambda in column definition (not JSON serializable)
+        for s in sessions:
+            s['formatted_time'] = self._format_ts(s['start_time'])
 
         columns = [
             {'name': 'id', 'label': 'ID', 'field': 'id', 'sortable': True, 'align': 'left'},
             {'name': 'name', 'label': 'Name', 'field': 'name', 'sortable': True, 'align': 'left'},
-            {'name': 'start_time', 'label': 'Start Time', 'field': lambda r: self._format_ts(r['start_time']), 'sortable': True, 'align': 'left'},
+            {'name': 'start_time', 'label': 'Start Time', 'field': 'formatted_time', 'sortable': True, 'align': 'left'},
             {'name': 'log_count', 'label': 'Logs', 'field': 'log_count', 'sortable': True, 'align': 'right'},
             {'name': 'actions', 'label': 'Actions', 'field': 'actions', 'align': 'center'}
         ]

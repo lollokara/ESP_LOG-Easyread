@@ -13,6 +13,38 @@ import json
 import datetime
 from collections import deque
 import fnmatch
+import sys
+import io
+
+# App Log Capture
+class LogCapture:
+    def __init__(self, max_len=10000):
+        self.buffer = deque(maxlen=max_len)
+        self.original_stderr = sys.stderr
+        self.original_stdout = sys.stdout
+
+    def write(self, message):
+        if message:
+            self.buffer.append(message)
+            # Echo to original stderr (or stdout if preferred) for debugging
+            try:
+                self.original_stderr.write(message)
+                self.original_stderr.flush()
+            except Exception:
+                pass
+
+    def flush(self):
+        try:
+            self.original_stderr.flush()
+        except Exception:
+            pass
+
+    def get_content(self):
+        return "".join(self.buffer)
+
+app_log_capture = LogCapture()
+# Redirect stderr to capture tracebacks
+sys.stderr = app_log_capture
 
 # Global backend state (shared across clients)
 serial_manager = None
@@ -502,12 +534,12 @@ class LogViewer:
         with ui.dialog() as self.app_log_dialog, ui.card().classes('w-full max-w-4xl h-[80vh] flex flex-col'):
             with ui.row().classes('w-full items-center justify-between'):
                 ui.label("App Logs").classes('text-xl font-bold')
-                ui.button(icon='close', on_click=self.app_log_dialog.close).props('flat round dense')
+                with ui.row().classes('gap-2'):
+                    ui.button(icon='refresh', on_click=lambda: self.app_log_content.set_text(app_log_capture.get_content())).props('flat round dense')
+                    ui.button(icon='close', on_click=self.app_log_dialog.close).props('flat round dense')
             ui.separator()
             with ui.scroll_area().classes('w-full grow bg-black text-white p-2 font-mono text-xs'):
-                 # Simple output of recent events or just a placeholder if no logger
-                 ui.label("Application logs would appear here. (Currently logging to stdout)").classes('text-gray-500')
-                 # We could read from a file if one exists
+                 self.app_log_content = ui.label(app_log_capture.get_content()).classes('whitespace-pre-wrap')
             self.app_log_dialog.open()
 
     def build_ui(self):
