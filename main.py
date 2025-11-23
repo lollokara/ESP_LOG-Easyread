@@ -559,12 +559,23 @@ class LogViewer:
         ::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
         ::-webkit-scrollbar-thumb { background: #555; border-radius: 0; }
         ::-webkit-scrollbar-thumb:hover { background: #777; }
+        /* Disable browser scroll anchoring to prevent fighting with JS manual adjustment */
+        .q-scrollarea__container { overflow-anchor: none !important; }
         </style>
         <script>
         document.addEventListener('contextmenu', (e) => {
             const selection = window.getSelection();
-            if (selection.toString().length > 0) {
-                navigator.clipboard.writeText(selection.toString());
+            const text = selection.toString();
+            if (text.length > 0) {
+                // Try modern API first, fallback to legacy
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).catch(err => {
+                        console.warn('Clipboard API failed, trying execCommand', err);
+                        try { document.execCommand('copy'); } catch (ex) { console.error('Copy failed', ex); }
+                    });
+                } else {
+                    try { document.execCommand('copy'); } catch (ex) { console.error('Copy failed', ex); }
+                }
             }
         });
 
