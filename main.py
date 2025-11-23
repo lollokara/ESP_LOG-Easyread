@@ -184,11 +184,10 @@ class LogViewer:
         self.window_size = 200 # Small fetch size for responsiveness
         self.max_display_lines = 2000 # Max lines to keep in DOM
 
-        self.scroll_offset = 0 # 0 means we are at the end (Live). > 0 means looking back.
-
         # State for Infinite Scroll
         self.fetching = False
         self.earliest_loaded_offset = 0 # The offset (from start) of the top-most log in view
+        self.latest_loaded_offset = 0 # The offset (from start) of the bottom-most log in view + 1
         
         self.drawer = None
         self.main_column = None
@@ -229,17 +228,16 @@ class LogViewer:
             # Fetch total count first to see if anything changed
             total_logs = db.get_total_log_count(app_state.current_session_id, self.get_filters(), self.search_term)
 
-            if total_logs > self.last_fetched_count:
-                # New logs arrived
-                # Fetch only the new items
-                limit = min(self.window_size, total_logs - self.last_fetched_count)
-                # For append, we want the *latest* entries but ordered chronologically.
-                # get_logs uses OFFSET/LIMIT.
-                # If total is 100, last_fetched is 95. We want offset 95, limit 5.
+            # Only update if Auto Scroll is ON
+            if self.auto_scroll and total_logs > self.latest_loaded_offset:
+                print(f"[Update] Auto-scroll ON. Total: {total_logs}, Latest: {self.latest_loaded_offset}. Fetching...")
+                # New logs arrived and we are watching live
+                limit = min(self.window_size, total_logs - self.latest_loaded_offset)
+
                 new_logs = db.get_logs(
                     app_state.current_session_id,
                     limit=limit,
-                    offset=self.last_fetched_count,
+                    offset=self.latest_loaded_offset,
                     filters=self.get_filters(),
                     search_term=self.search_term
                 )
@@ -247,10 +245,22 @@ class LogViewer:
                 if new_logs:
                     html_chunk = "".join([self.format_log_html(l) for l in new_logs])
                     js_html = json.dumps(html_chunk)
-                    # Append to DOM. Pass auto_scroll status to JS.
-                    auto_scroll_js = 'true' if self.auto_scroll else 'false'
-                    ui.run_javascript(f'if(window.logManager) window.logManager.append("{self.log_container_id}", {js_html}, {self.max_display_lines}, {auto_scroll_js})')
+                    # Append to DOM.
+                    ui.run_javascript(f'if(window.logManager) window.logManager.append("{self.log_container_id}", {js_html}, {self.max_display_lines}, true)')
 
+                    # Update Offsets
+                    count = len(new_logs)
+                    self.latest_loaded_offset += count
+
+                    # If we exceeded max lines, we dropped from top
+                    current_count = self.latest_loaded_offset - self.earliest_loaded_offset
+                    if current_count > self.max_display_lines:
+                        dropped = current_count - self.max_display_lines
+                        self.earliest_loaded_offset += dropped
+                        print(f"[Update] Pruned {dropped} lines from TOP. New Earliest: {self.earliest_loaded_offset}")
+
+            # Keep filters updated regardless
+            if total_logs > self.last_fetched_count:
                 self.last_fetched_count = total_logs
                 self.update_filter_options()
 
@@ -290,6 +300,7 @@ class LogViewer:
             # Load last N logs
             start_offset = max(0, total_logs - self.max_display_lines)
             self.earliest_loaded_offset = start_offset
+            self.latest_loaded_offset = total_logs
 
             logs = db.get_logs(
                 app_state.current_session_id,
@@ -337,12 +348,69 @@ class LogViewer:
             if logs:
                 html = "".join([self.format_log_html(l) for l in logs])
                 js_html = json.dumps(html)
-                # Use prepend in JS
-                ui.run_javascript(f'if(window.logManager) window.logManager.prepend("{self.log_container_id}", {js_html})')
+                # Use prepend in JS with max lines to prune bottom
+                ui.run_javascript(f'if(window.logManager) window.logManager.prepend("{self.log_container_id}", {js_html}, {self.max_display_lines})')
+
                 self.earliest_loaded_offset = fetch_offset
+
+                # If we prepended, we might have dropped from bottom
+                current_count = self.latest_loaded_offset - self.earliest_loaded_offset
+                # (Note: This is a bit of an estimation if JS and Python drift, but we trust logic)
+                # The actual count in DOM is now min(current_count + len(logs), max_display_lines)
+                # Wait, current_count before append was (latest - earliest_old).
+                # New count = (latest - earliest_new).
+                # If > max, we drop from bottom, so 'latest' moves back.
+
+                # Recalculate 'latest' based on strict window size
+                virtual_end = self.earliest_loaded_offset + self.max_display_lines
+                if self.latest_loaded_offset > virtual_end:
+                    self.latest_loaded_offset = virtual_end
 
         except Exception as e:
             print("Error loading older logs:")
+            traceback.print_exc()
+        finally:
+            self.fetching = False
+
+    async def load_newer_logs(self):
+        """Called when user scrolls to bottom (and auto_scroll is off)"""
+        if self.fetching or not app_state.current_session_id: return
+
+        # Check if we actually have newer logs in DB
+        # We need the real total count
+        total_logs = db.get_total_log_count(app_state.current_session_id, self.get_filters(), self.search_term)
+        if self.latest_loaded_offset >= total_logs: return
+
+        print(f"[ScrollDown] Loading newer logs. Current Latest: {self.latest_loaded_offset}, Total: {total_logs}")
+        self.fetching = True
+        try:
+            fetch_limit = self.window_size
+
+            logs = db.get_logs(
+                app_state.current_session_id,
+                limit=fetch_limit,
+                offset=self.latest_loaded_offset,
+                filters=self.get_filters(),
+                search_term=self.search_term
+            )
+
+            if logs:
+                html = "".join([self.format_log_html(l) for l in logs])
+                js_html = json.dumps(html)
+                # Append, NO auto-scroll force
+                ui.run_javascript(f'if(window.logManager) window.logManager.append("{self.log_container_id}", {js_html}, {self.max_display_lines}, false)')
+
+                self.latest_loaded_offset += len(logs)
+
+                # If we exceeded max lines, we dropped from top
+                current_count = self.latest_loaded_offset - self.earliest_loaded_offset
+                if current_count > self.max_display_lines:
+                    dropped = current_count - self.max_display_lines
+                    self.earliest_loaded_offset += dropped
+                    print(f"[ScrollDown] Pruned {dropped} lines from TOP. New Earliest: {self.earliest_loaded_offset}")
+
+        except Exception as e:
+            print("Error loading newer logs:")
             traceback.print_exc()
         finally:
             self.fetching = False
@@ -515,6 +583,8 @@ class LogViewer:
         # Infinite Scroll Trigger
         if e.vertical_percentage < 0.05: # Top 5%
             asyncio.create_task(self.load_older_logs())
+        elif e.vertical_percentage > 0.95 and not self.auto_scroll: # Bottom 5% and NOT auto-scrolling
+            asyncio.create_task(self.load_newer_logs())
 
         # Show/Hide Scroll to Top Button
         if self.scroll_top_btn:
@@ -590,33 +660,33 @@ class LogViewer:
 
                 el.insertAdjacentHTML('beforeend', html);
 
-                // Cleanup old logs with precise scroll anchoring
+                // Cleanup old logs (FROM TOP)
                 let removedHeight = 0;
                 let countToRemove = el.childElementCount - maxLines;
 
                 if (countToRemove > 0) {
-                    // Calculate height of elements to be removed
-                    // We must measure BEFORE removing
-                    if (!autoScroll && !isNearBottom) {
+                    // Logic to remove from TOP
+                    // If we are NOT auto-scrolling (viewing history), removing top elements shifts view up.
+                    // We must compensate.
+                    if (!autoScroll) {
                         for(let i=0; i<countToRemove; i++) {
-                            // Use getBoundingClientRect for sub-pixel precision + margins (if any)
-                            // Note: standard block elements usually don't overlap margins, but simple height is safer if no margins
                             removedHeight += el.children[i].getBoundingClientRect().height;
                         }
                     }
 
                     for(let i=0; i<countToRemove; i++) { el.firstElementChild.remove(); }
 
-                    if (!autoScroll && !isNearBottom && removedHeight > 0) {
+                    if (!autoScroll && removedHeight > 0) {
                         scrollTarget.scrollTop -= removedHeight;
                     }
                 }
 
-                if (autoScroll || isNearBottom) {
+                // Auto Scroll logic
+                if (autoScroll) {
                     scrollTarget.scrollTop = scrollTarget.scrollHeight;
                 }
             },
-            prepend: function(id, html) {
+            prepend: function(id, html, maxLines) {
                 const el = document.getElementById(id);
                 if (!el) return;
                 const scrollTarget = el.closest('.q-scrollarea').querySelector('.q-scrollarea__container');
@@ -625,8 +695,19 @@ class LogViewer:
 
                 el.insertAdjacentHTML('afterbegin', html);
 
-                // Maintain scroll position
+                // Cleanup logs (FROM BOTTOM) if needed
+                let countToRemove = el.childElementCount - maxLines;
+                if (countToRemove > 0) {
+                    for(let i=0; i<countToRemove; i++) { el.lastElementChild.remove(); }
+                }
+
+                // Maintain scroll position (shift down by the height of added elements)
                 const newHeight = scrollTarget.scrollHeight;
+                // If we removed elements from bottom, scrollHeight might not increase as much as expected,
+                // but scrollTop is relative to top. Prepending adds to top.
+                // New elements are at top. We want to stay looking at the "old" top element.
+                // So we add the height difference.
+                // (This assumes bottom removal doesn't affect top position, which is true)
                 scrollTarget.scrollTop = oldTop + (newHeight - oldHeight);
             },
             setContent: function(id, html) {
