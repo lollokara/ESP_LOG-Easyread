@@ -4,3 +4,7 @@ __pycache__/
 .DS_Store
 /build
 /dist
+/macos/Flutter
+/.dart_tool
+.flutter-plugins-dependencies
+pubspec.lock
