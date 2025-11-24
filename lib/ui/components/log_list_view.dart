@@ -139,10 +139,10 @@ class _LogListViewState extends ConsumerState<LogListView> {
           Positioned(
             right: 20,
             bottom: 20,
-            child: LiquidFAB(
-              onPressed: _scrollToBottom, // Changed from onTap to onPressed
-              // backgroundColor -> might be color or background
-              color: theme.accent,
+            child: FloatingActionButton(
+              mini: true,
+              backgroundColor: theme.accent,
+              onPressed: _scrollToBottom,
               child: const Icon(Icons.arrow_downward, color: Colors.white),
             ),
           )

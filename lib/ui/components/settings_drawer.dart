@@ -323,67 +323,71 @@ class _MultiSelectDialogState extends State<_MultiSelectDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return LiquidDialog(
-      color: widget.theme.bgSidebar,
-      child: SizedBox(
-        width: 300,
-        height: 400,
-        child: Column(
-          children: [
-             Padding(
-               padding: const EdgeInsets.all(16.0),
-               child: Text("Select Items", style: TextStyle(color: widget.theme.textPrimary, fontSize: 18)),
-             ),
-             Expanded(
-               child: ListView(
-                 children: widget.options.map((e) {
-                    final isSelected = _current.contains(e);
-                    return Row(
-                      children: [
-                        LiquidCheckbox(
-                          value: isSelected,
-                          onChanged: (val) {
-                            setState(() {
-                              if (val) {
-                                if (e == "ALL") _current = ["ALL"];
-                                else {
-                                  _current.remove("ALL");
-                                  _current.add(e);
-                                }
-                              } else {
-                                _current.remove(e);
-                                if (_current.isEmpty) _current = ["ALL"];
-                              }
-                            });
-                          },
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(e, style: TextStyle(color: widget.theme.textPrimary))),
-                      ],
-                    );
-                 }).toList(),
+    // Reverted to Dialog wrapping LiquidContainer to avoid API guessing
+    return Dialog(
+      backgroundColor: Colors.transparent, // transparent to let liquid container handle it
+      child: LiquidContainer(
+        color: widget.theme.bgSidebar,
+        child: SizedBox(
+          width: 300,
+          height: 400,
+          child: Column(
+            children: [
+               Padding(
+                 padding: const EdgeInsets.all(16.0),
+                 child: Text("Select Items", style: TextStyle(color: widget.theme.textPrimary, fontSize: 18)),
                ),
-             ),
-             Row(
-               mainAxisAlignment: MainAxisAlignment.end,
-               children: [
-                 LiquidButton(
-                   onTap: () => Navigator.pop(context),
-                   color: Colors.transparent,
-                   child: const Text("Cancel"),
+               Expanded(
+                 child: ListView(
+                   children: widget.options.map((e) {
+                      final isSelected = _current.contains(e);
+                      return Row(
+                        children: [
+                          LiquidCheckbox(
+                            value: isSelected,
+                            onChanged: (val) {
+                              setState(() {
+                                if (val) {
+                                  if (e == "ALL") _current = ["ALL"];
+                                  else {
+                                    _current.remove("ALL");
+                                    _current.add(e);
+                                  }
+                                } else {
+                                  _current.remove(e);
+                                  if (_current.isEmpty) _current = ["ALL"];
+                                }
+                              });
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(e, style: TextStyle(color: widget.theme.textPrimary))),
+                        ],
+                      );
+                   }).toList(),
                  ),
-                 const SizedBox(width: 8),
-                 LiquidButton(
-                   onTap: () {
-                     widget.onConfirm(_current);
-                     Navigator.pop(context);
-                   },
-                   color: widget.theme.accent.withOpacity(0.5),
-                   child: const Text("OK"),
-                 ),
-               ],
-             )
-          ]
+               ),
+               Row(
+                 mainAxisAlignment: MainAxisAlignment.end,
+                 children: [
+                   LiquidButton(
+                     onTap: () => Navigator.pop(context),
+                     color: Colors.transparent,
+                     child: const Text("Cancel"),
+                   ),
+                   const SizedBox(width: 8),
+                   LiquidButton(
+                     onTap: () {
+                       widget.onConfirm(_current);
+                       Navigator.pop(context);
+                     },
+                     color: widget.theme.accent.withOpacity(0.5),
+                     child: const Text("OK"),
+                   ),
+                 ],
+               )
+            ]
+          ),
         ),
       ),
     );

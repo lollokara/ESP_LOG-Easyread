@@ -149,7 +149,7 @@ class SerialLensThemes {
       primaryColor: t.bgSidebar, // Using sidebar color as primary "glass" color
       accentColor: t.accent,
       // textColor removed
-      surfaceColor: t.bgHeader,
+      // surfaceColor removed
       backgroundColor: t.bgMain,
       dividerColor: t.border,
       disabledColor: t.textSecondary.withOpacity(0.5),
