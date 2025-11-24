@@ -151,7 +151,7 @@ class SerialLensThemes {
       // textColor removed
       // surfaceColor removed
       backgroundColor: t.bgMain,
-      dividerColor: t.border,
+      // dividerColor removed
       disabledColor: t.textSecondary.withOpacity(0.5),
       errorColor: t.logE,
       blurStrength: 20.0, // Strong blur for the glass look

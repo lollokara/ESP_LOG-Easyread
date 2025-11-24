@@ -29,191 +29,192 @@ class SettingsDrawer extends ConsumerWidget {
         color: theme.bgSidebar,
         child: Column(
           children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.all(16),
-            alignment: Alignment.centerLeft,
-            child: Text(
-              "SerialLens",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: theme.textPrimary,
+            // Header
+            Container(
+              padding: const EdgeInsets.all(16),
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "SerialLens",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: theme.textPrimary,
+                ),
               ),
             ),
-          ),
-          LiquidDivider(color: theme.border.withOpacity(0.5)),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(12),
-              children: [
-                _buildSectionLabel("Appearance", theme),
-                _buildLiquidDropdown<String>(
-                  context,
-                  label: "Theme",
-                  value: appState.currentTheme,
-                  items: ["Light", "Dark", "Cyberpunk", "Monokai", "Glass Light", "Glass Dark"],
-                  onChanged: (val) => ref.read(appStateProvider.notifier).setTheme(val!),
-                  theme: theme,
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text("Font Size", style: TextStyle(color: theme.textSecondary)),
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: 30, height: 30,
-                          child: LiquidButton(
-                            onTap: () => ref.read(appStateProvider.notifier).setFontSize(appState.fontSize - 1),
-                            color: theme.bgInput,
-                            child: Icon(Icons.remove, size: 16, color: theme.textPrimary),
+            LiquidDivider(color: theme.border.withOpacity(0.5)),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(12),
+                children: [
+                  _buildSectionLabel("Appearance", theme),
+                  _buildLiquidDropdown<String>(
+                    context,
+                    label: "Theme",
+                    value: appState.currentTheme,
+                    items: ["Light", "Dark", "Cyberpunk", "Monokai", "Glass Light", "Glass Dark"],
+                    onChanged: (val) => ref.read(appStateProvider.notifier).setTheme(val!),
+                    theme: theme,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Font Size", style: TextStyle(color: theme.textSecondary)),
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: 30, height: 30,
+                            child: LiquidButton(
+                              onTap: () => ref.read(appStateProvider.notifier).setFontSize(appState.fontSize - 1),
+                              color: theme.bgInput,
+                              child: Icon(Icons.remove, size: 16, color: theme.textPrimary),
+                            ),
                           ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Text("${appState.fontSize.toInt()}", style: TextStyle(color: theme.textPrimary)),
-                        ),
-                        SizedBox(
-                          width: 30, height: 30,
-                          child: LiquidButton(
-                            onTap: () => ref.read(appStateProvider.notifier).setFontSize(appState.fontSize + 1),
-                            color: theme.bgInput,
-                            child: Icon(Icons.add, size: 16, color: theme.textPrimary),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Text("${appState.fontSize.toInt()}", style: TextStyle(color: theme.textPrimary)),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                ExpansionTile(
-                  title: Text("Columns", style: TextStyle(color: theme.textSecondary, fontSize: 14)),
-                  collapsedIconColor: theme.textSecondary,
-                  iconColor: theme.textPrimary,
-                  children: appState.visibleColumns.entries.map((e) {
-                    return Row(
-                      children: [
-                        LiquidCheckbox(
-                          value: e.value,
-                          onChanged: (v) => ref.read(appStateProvider.notifier).toggleColumn(e.key, v),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(e.key, style: TextStyle(color: theme.textPrimary, fontSize: 12)),
-                      ],
-                    );
-                  }).toList(),
-                ),
+                          SizedBox(
+                            width: 30, height: 30,
+                            child: LiquidButton(
+                              onTap: () => ref.read(appStateProvider.notifier).setFontSize(appState.fontSize + 1),
+                              color: theme.bgInput,
+                              child: Icon(Icons.add, size: 16, color: theme.textPrimary),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  ExpansionTile(
+                    title: Text("Columns", style: TextStyle(color: theme.textSecondary, fontSize: 14)),
+                    collapsedIconColor: theme.textSecondary,
+                    iconColor: theme.textPrimary,
+                    children: appState.visibleColumns.entries.map((e) {
+                      return Row(
+                        children: [
+                          LiquidCheckbox(
+                            value: e.value,
+                            onChanged: (v) => ref.read(appStateProvider.notifier).toggleColumn(e.key, v),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(e.key, style: TextStyle(color: theme.textPrimary, fontSize: 12)),
+                        ],
+                      );
+                    }).toList(),
+                  ),
 
-                const SizedBox(height: 12),
-                LiquidDivider(color: theme.border.withOpacity(0.5)),
-                _buildSectionLabel("Connection", theme),
-                _buildLiquidDropdown<String?>(
-                  context,
-                  label: "Port",
-                  value: ports.contains(appState.port) ? appState.port : (ports.isNotEmpty ? ports.first : null),
-                  items: ports,
-                  onChanged: (val) => ref.read(appStateProvider.notifier).setPort(val),
-                  theme: theme,
-                ),
-                const SizedBox(height: 8),
-                _buildLiquidDropdown<int>(
-                  context,
-                  label: "Baud",
-                  value: appState.baud,
-                  items: [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600],
-                  onChanged: (val) => ref.read(appStateProvider.notifier).setBaud(val!),
-                  theme: theme,
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text("Connect", style: TextStyle(color: theme.textPrimary)),
-                    SizedBox(
-                      height: 30,
-                      child: LiquidSwitch(
-                        value: isConnected,
-                        onChanged: appState.mockMode ? null : (val) {
-                          if (val) {
-                            if (appState.port != null) {
-                              logNotifier.connect(appState.port!, appState.baud);
+                  const SizedBox(height: 12),
+                  LiquidDivider(color: theme.border.withOpacity(0.5)),
+                  _buildSectionLabel("Connection", theme),
+                  _buildLiquidDropdown<String?>(
+                    context,
+                    label: "Port",
+                    value: ports.contains(appState.port) ? appState.port : (ports.isNotEmpty ? ports.first : null),
+                    items: ports,
+                    onChanged: (val) => ref.read(appStateProvider.notifier).setPort(val),
+                    theme: theme,
+                  ),
+                  const SizedBox(height: 8),
+                  _buildLiquidDropdown<int>(
+                    context,
+                    label: "Baud",
+                    value: appState.baud,
+                    items: [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600],
+                    onChanged: (val) => ref.read(appStateProvider.notifier).setBaud(val!),
+                    theme: theme,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Connect", style: TextStyle(color: theme.textPrimary)),
+                      SizedBox(
+                        height: 30,
+                        child: LiquidSwitch(
+                          value: isConnected,
+                          onChanged: appState.mockMode ? null : (val) {
+                            if (val) {
+                              if (appState.port != null) {
+                                logNotifier.connect(appState.port!, appState.baud);
+                              }
+                            } else {
+                              logNotifier.disconnect();
                             }
-                          } else {
-                            logNotifier.disconnect();
-                          }
-                        },
+                          },
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
 
-                const SizedBox(height: 12),
-                LiquidDivider(color: theme.border.withOpacity(0.5)),
-                _buildSectionLabel("Logging", theme),
-                _buildLiquidDropdown<String>(
-                  context,
-                  label: "Session Mode",
-                  value: appState.sessionMode,
-                  items: ["Auto-New", "Single"],
-                  onChanged: (val) => ref.read(appStateProvider.notifier).setSessionMode(val!),
-                  theme: theme,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text("Mock Mode", style: TextStyle(color: theme.textPrimary)),
-                    SizedBox(
-                      height: 30,
-                      child: LiquidSwitch(
-                        value: appState.mockMode,
-                        onChanged: (val) => logNotifier.toggleMockMode(val),
+                  const SizedBox(height: 12),
+                  LiquidDivider(color: theme.border.withOpacity(0.5)),
+                  _buildSectionLabel("Logging", theme),
+                  _buildLiquidDropdown<String>(
+                    context,
+                    label: "Session Mode",
+                    value: appState.sessionMode,
+                    items: ["Auto-New", "Single"],
+                    onChanged: (val) => ref.read(appStateProvider.notifier).setSessionMode(val!),
+                    theme: theme,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Mock Mode", style: TextStyle(color: theme.textPrimary)),
+                      SizedBox(
+                        height: 30,
+                        child: LiquidSwitch(
+                          value: appState.mockMode,
+                          onChanged: (val) => logNotifier.toggleMockMode(val),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
 
-                const SizedBox(height: 12),
-                LiquidDivider(color: theme.border.withOpacity(0.5)),
-                _buildSectionLabel("Filters", theme),
-                _buildMultiSelect(
-                  context,
-                  label: "Levels",
-                  options: ["V", "D", "I", "W", "E", "U"],
-                  selected: filter.levels,
-                  onChanged: filterNotifier.setLevels,
-                  theme: theme
-                ),
-                const SizedBox(height: 8),
-                _buildMultiSelect(
-                  context,
-                  label: "Files",
-                  options: uniqueFiles,
-                  selected: filter.files,
-                  onChanged: filterNotifier.setFiles,
-                  theme: theme
-                ),
-                const SizedBox(height: 8),
-                _buildMultiSelect(
-                  context,
-                  label: "Functions",
-                  options: uniqueFunctions,
-                  selected: filter.functions,
-                  onChanged: filterNotifier.setFunctions,
-                  theme: theme
-                ),
+                  const SizedBox(height: 12),
+                  LiquidDivider(color: theme.border.withOpacity(0.5)),
+                  _buildSectionLabel("Filters", theme),
+                  _buildMultiSelect(
+                    context,
+                    label: "Levels",
+                    options: ["V", "D", "I", "W", "E", "U"],
+                    selected: filter.levels,
+                    onChanged: filterNotifier.setLevels,
+                    theme: theme
+                  ),
+                  const SizedBox(height: 8),
+                  _buildMultiSelect(
+                    context,
+                    label: "Files",
+                    options: uniqueFiles,
+                    selected: filter.files,
+                    onChanged: filterNotifier.setFiles,
+                    theme: theme
+                  ),
+                  const SizedBox(height: 8),
+                  _buildMultiSelect(
+                    context,
+                    label: "Functions",
+                    options: uniqueFunctions,
+                    selected: filter.functions,
+                    onChanged: filterNotifier.setFunctions,
+                    theme: theme
+                  ),
 
-                const SizedBox(height: 20),
-                LiquidButton(
-                  color: Colors.red.withOpacity(0.8),
-                  onTap: logNotifier.clearLogs,
-                  child: const Text("Clear Logs", style: TextStyle(color: Colors.white)),
-                )
-              ],
+                  const SizedBox(height: 20),
+                  LiquidButton(
+                    color: Colors.red.withOpacity(0.8),
+                    onTap: logNotifier.clearLogs,
+                    child: const Text("Clear Logs", style: TextStyle(color: Colors.white)),
+                  )
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -323,9 +324,8 @@ class _MultiSelectDialogState extends State<_MultiSelectDialog> {
 
   @override
   Widget build(BuildContext context) {
-    // Reverted to Dialog wrapping LiquidContainer to avoid API guessing
     return Dialog(
-      backgroundColor: Colors.transparent, // transparent to let liquid container handle it
+      backgroundColor: Colors.transparent,
       child: LiquidContainer(
         color: widget.theme.bgSidebar,
         child: SizedBox(
