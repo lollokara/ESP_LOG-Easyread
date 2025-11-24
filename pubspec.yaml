@@ -11,7 +11,7 @@ dependencies:
     sdk: flutter
   flutter_riverpod: ^2.4.9
   riverpod_annotation: ^2.3.3
-  flutter_libserialport: ^0.3.1
+  flutter_libserialport: ^0.6.0
   sqflite_common_ffi: ^2.3.0
   sqflite: ^2.3.0
   path_provider: ^2.1.1

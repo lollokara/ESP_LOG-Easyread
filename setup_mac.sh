@@ -46,7 +46,15 @@ else
     echo "✅ CocoaPods detected."
 fi
 
-# 5. Project Setup & Scaffolding
+# 5. Install CMake (Often needed for native builds)
+if ! command -v cmake &> /dev/null; then
+    echo "🔸 Installing CMake..."
+    brew install cmake
+else
+    echo "✅ CMake detected."
+fi
+
+# 6. Project Setup & Scaffolding
 echo "🔹 Setting up project..."
 
 # Ensure we have the macOS runner scaffolding
@@ -59,7 +67,7 @@ fi
 echo "🔸 Getting packages..."
 flutter pub get
 
-# 6. Patching Entitlements (Disable Sandbox for Serial Access)
+# 7. Patching Entitlements (Disable Sandbox for Serial Access)
 echo "🔹 Patching macOS Entitlements..."
 
 ENTITLEMENTS_DEBUG="macos/Runner/DebugProfile.entitlements"
