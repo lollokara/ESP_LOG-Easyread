@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:liquid_glass_ui_design/liquid_glass_ui_design.dart';
 
 // --- Theme Data Classes ---
 
@@ -38,105 +39,99 @@ class SerialTheme {
     required this.logW,
     required this.logE,
     required this.accent,
-    this.isGlass = false,
+    this.isGlass = true, // Default to true as per request
     this.isDark = true,
   });
 }
 
 class SerialLensThemes {
-  static const light = SerialTheme(
+  // All themes now use transparent backgrounds to allow "Liquid" glass effect
+  // and desktop visibility.
+
+  static final light = SerialTheme(
     name: "Light",
-    bgMain: Colors.white,
-    bgSidebar: Color(0xFFF3F4F6), // gray-100
-    bgHeader: Colors.white,
-    bgInput: Colors.white,
-    textPrimary: Color(0xFF1F2937), // gray-800
-    textSecondary: Color(0xFF4B5563), // gray-600
-    border: Color(0xFFD1D5DB), // gray-300
-    logHover: Color(0xFFF3F4F6),
-    logV: Color(0xFF6B7280), // gray-500
-    logD: Color(0xFF2563EB), // blue-600
-    logI: Color(0xFF16A34A), // green-600
-    logW: Color(0xFFCA8A04), // yellow-600
-    logE: Color(0xFFDC2626), // red-600
+    bgMain: Colors.white.withOpacity(0.1), // Semi-transparent
+    bgSidebar: const Color(0xFFF3F4F6).withOpacity(0.3),
+    bgHeader: Colors.white.withOpacity(0.2),
+    bgInput: Colors.white.withOpacity(0.3),
+    textPrimary: const Color(0xFF1F2937),
+    textSecondary: const Color(0xFF4B5563),
+    border: const Color(0xFFD1D5DB).withOpacity(0.5),
+    logHover: const Color(0xFFF3F4F6).withOpacity(0.4),
+    logV: const Color(0xFF6B7280),
+    logD: const Color(0xFF2563EB),
+    logI: const Color(0xFF16A34A),
+    logW: const Color(0xFFCA8A04),
+    logE: const Color(0xFFDC2626),
     accent: Colors.blue,
     isDark: false,
+    isGlass: true,
   );
 
-  static const dark = SerialTheme(
+  static final dark = SerialTheme(
     name: "Dark",
-    bgMain: Color(0xFF0F172A), // slate-900
-    bgSidebar: Color(0xFF1E293B), // slate-800
-    bgHeader: Color(0xFF1E293B),
-    bgInput: Color(0xFF0F172A),
-    textPrimary: Color(0xFFE5E7EB), // gray-200
-    textSecondary: Color(0xFF9CA3AF), // gray-400
-    border: Color(0xFF334155), // slate-700
-    logHover: Color(0xFF1E293B),
-    logV: Color(0xFF9CA3AF),
-    logD: Color(0xFF60A5FA), // blue-400
-    logI: Color(0xFF4ADE80), // green-400
-    logW: Color(0xFFFACC15), // yellow-400
-    logE: Color(0xFFF87171), // red-400
+    bgMain: const Color(0xFF0F172A).withOpacity(0.1),
+    bgSidebar: const Color(0xFF1E293B).withOpacity(0.3),
+    bgHeader: const Color(0xFF1E293B).withOpacity(0.2),
+    bgInput: const Color(0xFF0F172A).withOpacity(0.3),
+    textPrimary: const Color(0xFFE5E7EB),
+    textSecondary: const Color(0xFF9CA3AF),
+    border: const Color(0xFF334155).withOpacity(0.5),
+    logHover: const Color(0xFF1E293B).withOpacity(0.4),
+    logV: const Color(0xFF9CA3AF),
+    logD: const Color(0xFF60A5FA),
+    logI: const Color(0xFF4ADE80),
+    logW: const Color(0xFFFACC15),
+    logE: const Color(0xFFF87171),
     accent: Colors.blueAccent,
     isDark: true,
+    isGlass: true,
   );
 
-  static const cyberpunk = SerialTheme(
+  static final cyberpunk = SerialTheme(
     name: "Cyberpunk",
-    bgMain: Colors.black,
-    bgSidebar: Color(0xFF121212), // Very dark gray
-    bgHeader: Color(0xFF121212),
-    bgInput: Colors.black,
-    textPrimary: Color(0xFF00FF9C), // Neon Green
-    textSecondary: Color(0xFFFF00FF), // Neon Pink
-    border: Color(0xFF00FFFF), // Cyan
-    logHover: Color(0xFF1A1A1A),
-    logV: Color(0xFF808080),
-    logD: Color(0xFF00FFFF), // Cyan
-    logI: Color(0xFF00FF9C), // Green
-    logW: Color(0xFFFFD700), // Gold
-    logE: Color(0xFFFF0055), // Hot Pink/Red
-    accent: Color(0xFF00FFFF),
+    bgMain: Colors.black.withOpacity(0.1),
+    bgSidebar: const Color(0xFF121212).withOpacity(0.4),
+    bgHeader: const Color(0xFF121212).withOpacity(0.3),
+    bgInput: Colors.black.withOpacity(0.4),
+    textPrimary: const Color(0xFF00FF9C),
+    textSecondary: const Color(0xFFFF00FF),
+    border: const Color(0xFF00FFFF).withOpacity(0.6),
+    logHover: const Color(0xFF1A1A1A).withOpacity(0.5),
+    logV: const Color(0xFF808080),
+    logD: const Color(0xFF00FFFF),
+    logI: const Color(0xFF00FF9C),
+    logW: const Color(0xFFFFD700),
+    logE: const Color(0xFFFF0055),
+    accent: const Color(0xFF00FFFF),
     isDark: true,
+    isGlass: true,
   );
 
-  static const monokai = SerialTheme(
+  static final monokai = SerialTheme(
     name: "Monokai",
-    bgMain: Color(0xFF272822),
-    bgSidebar: Color(0xFF1E1F1C),
-    bgHeader: Color(0xFF1E1F1C),
-    bgInput: Color(0xFF272822),
-    textPrimary: Color(0xFFF8F8F2),
-    textSecondary: Color(0xFF75715E),
-    border: Color(0xFF75715E),
-    logHover: Color(0xFF3E3D32),
-    logV: Color(0xFF75715E),
-    logD: Color(0xFF66D9EF),
-    logI: Color(0xFFA6E22E),
-    logW: Color(0xFFFD971F),
-    logE: Color(0xFFF92672),
-    accent: Color(0xFFA6E22E),
+    bgMain: const Color(0xFF272822).withOpacity(0.1),
+    bgSidebar: const Color(0xFF1E1F1C).withOpacity(0.4),
+    bgHeader: const Color(0xFF1E1F1C).withOpacity(0.3),
+    bgInput: const Color(0xFF272822).withOpacity(0.4),
+    textPrimary: const Color(0xFFF8F8F2),
+    textSecondary: const Color(0xFF75715E),
+    border: const Color(0xFF75715E).withOpacity(0.5),
+    logHover: const Color(0xFF3E3D32).withOpacity(0.5),
+    logV: const Color(0xFF75715E),
+    logD: const Color(0xFF66D9EF),
+    logI: const Color(0xFFA6E22E),
+    logW: const Color(0xFFFD971F),
+    logE: const Color(0xFFF92672),
+    accent: const Color(0xFFA6E22E),
     isDark: true,
-  );
-
-  static final glassDark = dark.copyWith(
-    name: "Glass Dark",
-    bgMain: Colors.transparent, // Handled by container
-    bgSidebar: const Color(0x33000000), // More transparent (0x33 = ~20%)
-    bgHeader: const Color(0x33000000),
-    bgInput: const Color(0x22FFFFFF),
     isGlass: true,
   );
 
-  static final glassLight = light.copyWith(
-    name: "Glass Light",
-    bgMain: Colors.transparent,
-    bgSidebar: const Color(0x33FFFFFF),
-    bgHeader: const Color(0x33FFFFFF),
-    bgInput: const Color(0x22000000),
-    isGlass: true,
-  );
+  // Deprecated specific glass themes as all are now glass,
+  // but keeping them mapped for backward compatibility of saved settings
+  static final glassDark = dark.copyWith(name: "Glass Dark");
+  static final glassLight = light.copyWith(name: "Glass Light");
 
   static SerialTheme getRawTheme(String name) {
     switch (name) {
@@ -149,15 +144,30 @@ class SerialLensThemes {
     }
   }
 
+  static LiquidTheme getLiquidTheme(SerialTheme t) {
+    return LiquidTheme(
+      primaryColor: t.bgSidebar, // Using sidebar color as primary "glass" color
+      accentColor: t.accent,
+      typographyColor: t.textPrimary,
+      surfaceColor: t.bgHeader,
+      backgroundColor: t.bgMain,
+      dividerColor: t.border,
+      disabledColor: t.textSecondary.withOpacity(0.5),
+      errorColor: t.logE,
+      blurStrength: 20.0, // Strong blur for the glass look
+      borderRadius: 12.0,
+    );
+  }
+
   static ThemeData getTheme(String name) {
     final t = getRawTheme(name);
     final base = t.isDark ? ThemeData.dark() : ThemeData.light();
 
     return base.copyWith(
-      scaffoldBackgroundColor: t.isGlass ? Colors.transparent : t.bgMain,
+      scaffoldBackgroundColor: Colors.transparent, // Always transparent for glass/window
       colorScheme: base.colorScheme.copyWith(
         primary: t.accent,
-        background: t.bgMain,
+        background: Colors.transparent,
         surface: t.bgSidebar,
       ),
       textTheme: GoogleFonts.jetBrainsMonoTextTheme(base.textTheme).apply(

@@ -5,6 +5,7 @@ import 'package:serial_lens/providers/app_state_provider.dart';
 import 'package:serial_lens/providers/log_provider.dart';
 import 'package:serial_lens/ui/themes.dart';
 import 'package:intl/intl.dart';
+import 'package:liquid_glass_ui_design/liquid_glass_ui_design.dart';
 
 class LogListView extends ConsumerStatefulWidget {
   const LogListView({super.key});
@@ -62,16 +63,7 @@ class _LogListViewState extends ConsumerState<LogListView> {
     final count = await notifier.loadOlderLogs();
 
     if (count > 0 && _scrollController.hasClients) {
-      // Maintaining scroll position after prepending is tricky in Flutter.
-      // When items are added to top, the content size grows, but 'pixels' (offset from top) stays same.
-      // This means we are now looking at the NEW items at the top.
-      // User expects to stay at the "old top" (now middle).
-      // We assume average row height? Or just jump.
-      // Jumping is hard without knowing exact height.
-      // A simple workaround is to let the user scroll up again, or try to jump a bit.
-      // But typically creating a jump is less jarring than losing context.
-      // For now, let's notify user.
-      // In a real production app, we'd calculate height or use a center-key list.
+      // Logic for preserving scroll position could go here.
     }
   }
 
@@ -126,7 +118,8 @@ class _LogListViewState extends ConsumerState<LogListView> {
               controller: _scrollController,
               itemCount: logs.length,
               cacheExtent: 500,
-              // physics: const AlwaysScrollableScrollPhysics(), // Ensure bounce on mac
+              // Transparent background for ListView to see through window
+              padding: const EdgeInsets.all(0),
               itemBuilder: (context, index) {
                 final entry = logs[index];
                 return _LogItem(
@@ -137,7 +130,7 @@ class _LogListViewState extends ConsumerState<LogListView> {
               },
             );
           },
-          loading: () => Center(child: CircularProgressIndicator(color: theme.accent)),
+          loading: () => Center(child: LiquidLoader(color: theme.accent)),
           error: (err, stack) => Center(child: Text("Error: $err", style: const TextStyle(color: Colors.red))),
         ),
 
@@ -146,10 +139,9 @@ class _LogListViewState extends ConsumerState<LogListView> {
           Positioned(
             right: 20,
             bottom: 20,
-            child: FloatingActionButton(
-              mini: true,
+            child: LiquidFAB(
+              onTap: _scrollToBottom,
               backgroundColor: theme.accent,
-              onPressed: _scrollToBottom,
               child: const Icon(Icons.arrow_downward, color: Colors.white),
             ),
           )
@@ -184,11 +176,10 @@ class _LogItem extends StatelessWidget {
 
     final fontSize = appState.fontSize;
 
+    // We do NOT wrap each item in a heavy LiquidCard for performance.
+    // However, we ensure the text color contrasts well with the semi-transparent background.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: Colors.transparent)),
-      ),
       child: SelectableText.rich(
         TextSpan(
           style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: fontSize, height: 1.2),

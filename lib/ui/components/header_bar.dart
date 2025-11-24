@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:serial_lens/providers/app_state_provider.dart';
 import 'package:serial_lens/providers/log_provider.dart';
 import 'package:serial_lens/ui/themes.dart';
+import 'package:liquid_glass_ui_design/liquid_glass_ui_design.dart';
 
 class HeaderBar extends ConsumerWidget {
   const HeaderBar({super.key});
@@ -14,57 +15,43 @@ class HeaderBar extends ConsumerWidget {
     final filter = ref.watch(filterProvider);
 
     return Container(
-      height: 50,
+      height: 60, // Slightly taller for liquid components
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      // We remove manual background color to let Liquid/Glass handle it,
+      // or rely on parent transparency.
       decoration: BoxDecoration(
-        color: theme.bgHeader,
-        border: Border(bottom: BorderSide(color: theme.border)),
+        color: Colors.transparent, // Let underlying glass show
+        border: Border(bottom: BorderSide(color: theme.border.withOpacity(0.3))),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
-          IconButton(
-            icon: Icon(Icons.menu, color: theme.textPrimary),
-            onPressed: () => Scaffold.of(context).openDrawer(),
+          LiquidButton(
+            width: 40,
+            height: 40,
+            backgroundColor: theme.bgInput,
+            onTap: () => Scaffold.of(context).openDrawer(),
+            child: Icon(Icons.menu, color: theme.textPrimary, size: 20),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
           Expanded(
-            child: Container(
-              height: 36,
-              decoration: BoxDecoration(
-                color: theme.bgInput,
-                border: Border.all(color: theme.border),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Row(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Icon(Icons.search, size: 18, color: theme.textSecondary),
-                  ),
-                  Expanded(
-                    child: TextField(
-                      style: TextStyle(color: theme.textPrimary, fontSize: 13),
-                      decoration: InputDecoration(
-                        hintText: "Search logs... (* ?)",
-                        hintStyle: TextStyle(color: theme.textSecondary.withOpacity(0.5)),
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                      onChanged: (val) => ref.read(filterProvider.notifier).setSearchTerm(val),
-                    ),
-                  ),
-                  if (filter.searchTerm.isNotEmpty)
-                    IconButton(
-                      icon: Icon(Icons.close, size: 16, color: theme.textSecondary),
-                      onPressed: () => ref.read(filterProvider.notifier).setSearchTerm(""),
+            child: LiquidTextField(
+              hintText: "Search logs... (* ?)",
+              textColor: theme.textPrimary,
+              hintColor: theme.textSecondary.withOpacity(0.5),
+              backgroundColor: theme.bgInput,
+              onChanged: (val) => ref.read(filterProvider.notifier).setSearchTerm(val),
+              prefixIcon: Icon(Icons.search, size: 18, color: theme.textSecondary),
+              // We need to handle "clear" button manually or if LiquidTextField supports suffix
+              suffixIcon: filter.searchTerm.isNotEmpty
+                  ? GestureDetector(
+                      onTap: () => ref.read(filterProvider.notifier).setSearchTerm(""),
+                      child: Icon(Icons.close, size: 16, color: theme.textSecondary),
                     )
-                ],
-              ),
+                  : null,
             ),
           ),
-          const SizedBox(width: 8),
-          _buildToggle(
+          const SizedBox(width: 12),
+          _buildLiquidToggle(
             context,
             label: "Time",
             value: appState.realtimeTimestamp,
@@ -72,7 +59,7 @@ class HeaderBar extends ConsumerWidget {
             theme: theme,
           ),
           const SizedBox(width: 8),
-          _buildToggle(
+          _buildLiquidToggle(
             context,
             label: "Scroll",
             value: appState.autoScroll,
@@ -84,7 +71,7 @@ class HeaderBar extends ConsumerWidget {
     );
   }
 
-  Widget _buildToggle(BuildContext context, {
+  Widget _buildLiquidToggle(BuildContext context, {
     required String label,
     required bool value,
     required Function(bool) onChanged,
@@ -93,10 +80,15 @@ class HeaderBar extends ConsumerWidget {
     return Row(
       children: [
         Text(label, style: TextStyle(color: theme.textSecondary, fontSize: 12)),
-        Switch(
-          value: value,
-          onChanged: onChanged,
-          activeColor: theme.accent,
+        const SizedBox(width: 8),
+        SizedBox(
+          height: 30,
+          child: LiquidSwitch(
+            value: value,
+            onChanged: onChanged,
+            activeColor: theme.accent,
+            inactiveColor: theme.bgInput,
+          ),
         ),
       ],
     );

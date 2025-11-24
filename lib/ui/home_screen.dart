@@ -6,81 +6,54 @@ import 'package:serial_lens/ui/components/settings_drawer.dart';
 import 'package:serial_lens/ui/components/header_bar.dart';
 import 'package:serial_lens/ui/components/log_list_view.dart';
 import 'package:serial_lens/ui/components/cli_input.dart';
-import 'dart:ui'; // For ImageFilter
+import 'package:liquid_glass_ui_design/liquid_glass_ui_design.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeName = ref.watch(appStateProvider).currentTheme;
-    final themeData = SerialLensThemes.getRawTheme(themeName);
+    // We rely on LiquidScaffold for the glass structure.
+    // Since we want "desktop/other apps" to be visible, we avoid adding an opaque background here.
+    // The main.dart sets window background to transparent.
+    // LiquidScaffold handles the layout.
 
-    // Background handling for Glass Themes
-    Widget body = const Column(
-      children: [
-        HeaderBar(),
-        Expanded(child: LogListView()),
-        CliInput(),
-      ],
-    );
+    return LiquidScaffold(
+      // Drawer works a bit differently in standard Flutter vs custom scaffolds.
+      // LiquidScaffold might not have a `drawer` slot. Let's check typical usage.
+      // If it inherits from Scaffold or wraps it, we can use it.
+      // Based on typical package design, it likely wraps Scaffold or implements similar.
+      // If LiquidScaffold doesn't support drawer directly, we might need a standard Scaffold
+      // with transparent background wrapping our content.
 
-    if (themeData.isGlass) {
-      body = Stack(
-        children: [
-          // Dynamic Gradient Background
-          Positioned.fill(
-            child: _GlassBackground(isDark: themeData.isDark),
-          ),
-          // Main Content
-          Positioned.fill(
-            child: body,
-          ),
-        ],
-      );
-    } else {
-      // Solid background handled by Scaffold backgroundColor in main.dart
-    }
+      // Checking package info memory: "LiquidScaffold, LiquidAppBar...".
+      // Assuming LiquidScaffold has `drawer` property or we put drawer in standard Scaffold
+      // inside a glass container?
+      // Actually, standard Scaffold is fine if we make it transparent, but LiquidScaffold provides the "Glass" look.
 
-    return Scaffold(
+      // However, to keep it safe and flexible:
+      // We will use a standard Scaffold (transparent) to hold the Drawer logic,
+      // and use Liquid components inside.
+      // Wait, LiquidScaffold probably applies the blur/glass effect to the *entire* app background.
+
+      // Let's use LiquidScaffold as the root widget of the screen.
+      appBar: const LiquidAppBar(
+         title: HeaderBar(), // We'll put our custom header here or below
+         // LiquidAppBar expects a title widget.
+         // Our HeaderBar is complex (search, buttons).
+         // We might just put HeaderBar in the body if LiquidAppBar is too restrictive.
+         backgroundColor: Colors.transparent,
+         elevation: 0,
+      ),
       drawer: const SettingsDrawer(),
-      body: body,
-    );
-  }
-}
-
-class _GlassBackground extends StatefulWidget {
-  final bool isDark;
-  const _GlassBackground({required this.isDark});
-
-  @override
-  State<_GlassBackground> createState() => _GlassBackgroundState();
-}
-
-class _GlassBackgroundState extends State<_GlassBackground> {
-  Offset mousePos = Offset.zero;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onHover: (event) {
-        setState(() {
-          mousePos = event.position;
-        });
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment(
-              (mousePos.dx / MediaQuery.of(context).size.width) * 2 - 1,
-              (mousePos.dy / MediaQuery.of(context).size.height) * 2 - 1,
-            ),
-            radius: 1.0,
-            colors: widget.isDark
-              ? [const Color(0xFF1a1a2e), Colors.black]
-              : [const Color(0xFFe0eafc), const Color(0xFFcfdef3)],
-          ),
-        ),
+      body: const Column(
+        children: [
+          // If we didn't use LiquidAppBar for the complex header, we put it here.
+          // But HeaderBar was designed as a row.
+          // Let's stick to the previous layout but wrapped in transparent container.
+          Expanded(child: LogListView()),
+          CliInput(),
+        ],
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:serial_lens/providers/app_state_provider.dart';
 import 'package:serial_lens/providers/log_provider.dart';
 import 'package:serial_lens/ui/themes.dart';
+import 'package:liquid_glass_ui_design/liquid_glass_ui_design.dart';
 
 class SettingsDrawer extends ConsumerWidget {
   const SettingsDrawer({super.key});
@@ -21,7 +22,9 @@ class SettingsDrawer extends ConsumerWidget {
     final uniqueFunctions = logNotifier.getUniqueFunctions();
     final ports = logNotifier.serialService.getAvailablePorts();
 
-    return Drawer(
+    // Use LiquidContainer for drawer background to maintain glass effect
+    return LiquidContainer(
+      width: 300,
       backgroundColor: theme.bgSidebar,
       child: Column(
         children: [
@@ -38,13 +41,13 @@ class SettingsDrawer extends ConsumerWidget {
               ),
             ),
           ),
-          const Divider(height: 1),
+          LiquidDivider(color: theme.border.withOpacity(0.5)),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(12),
               children: [
                 _buildSectionLabel("Appearance", theme),
-                _buildDropdown<String>(
+                _buildLiquidDropdown<String>(
                   context,
                   label: "Theme",
                   value: appState.currentTheme,
@@ -52,23 +55,28 @@ class SettingsDrawer extends ConsumerWidget {
                   onChanged: (val) => ref.read(appStateProvider.notifier).setTheme(val!),
                   theme: theme,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text("Font Size", style: TextStyle(color: theme.textSecondary)),
                     Row(
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.remove, size: 16),
-                          onPressed: () => ref.read(appStateProvider.notifier).setFontSize(appState.fontSize - 1),
-                          color: theme.textPrimary,
+                        LiquidButton(
+                          onTap: () => ref.read(appStateProvider.notifier).setFontSize(appState.fontSize - 1),
+                          width: 30, height: 30,
+                          backgroundColor: theme.bgInput,
+                          child: Icon(Icons.remove, size: 16, color: theme.textPrimary),
                         ),
-                        Text("${appState.fontSize.toInt()}", style: TextStyle(color: theme.textPrimary)),
-                        IconButton(
-                          icon: const Icon(Icons.add, size: 16),
-                          onPressed: () => ref.read(appStateProvider.notifier).setFontSize(appState.fontSize + 1),
-                          color: theme.textPrimary,
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Text("${appState.fontSize.toInt()}", style: TextStyle(color: theme.textPrimary)),
+                        ),
+                        LiquidButton(
+                          onTap: () => ref.read(appStateProvider.notifier).setFontSize(appState.fontSize + 1),
+                          width: 30, height: 30,
+                          backgroundColor: theme.bgInput,
+                          child: Icon(Icons.add, size: 16, color: theme.textPrimary),
                         ),
                       ],
                     ),
@@ -79,20 +87,19 @@ class SettingsDrawer extends ConsumerWidget {
                   collapsedIconColor: theme.textSecondary,
                   iconColor: theme.textPrimary,
                   children: appState.visibleColumns.entries.map((e) {
-                    return CheckboxListTile(
-                      title: Text(e.key, style: TextStyle(color: theme.textPrimary, fontSize: 12)),
+                    return LiquidCheckbox(
+                      label: Text(e.key, style: TextStyle(color: theme.textPrimary, fontSize: 12)),
                       value: e.value,
-                      onChanged: (v) => ref.read(appStateProvider.notifier).toggleColumn(e.key, v!),
+                      onChanged: (v) => ref.read(appStateProvider.notifier).toggleColumn(e.key, v),
                       activeColor: theme.accent,
-                      dense: true,
-                      controlAffinity: ListTileControlAffinity.leading,
                     );
                   }).toList(),
                 ),
 
-                const Divider(),
+                const SizedBox(height: 12),
+                LiquidDivider(color: theme.border.withOpacity(0.5)),
                 _buildSectionLabel("Connection", theme),
-                _buildDropdown<String?>(
+                _buildLiquidDropdown<String?>(
                   context,
                   label: "Port",
                   value: ports.contains(appState.port) ? appState.port : (ports.isNotEmpty ? ports.first : null),
@@ -101,7 +108,7 @@ class SettingsDrawer extends ConsumerWidget {
                   theme: theme,
                 ),
                 const SizedBox(height: 8),
-                _buildDropdown<int>(
+                _buildLiquidDropdown<int>(
                   context,
                   label: "Baud",
                   value: appState.baud,
@@ -110,24 +117,34 @@ class SettingsDrawer extends ConsumerWidget {
                   theme: theme,
                 ),
                 const SizedBox(height: 12),
-                SwitchListTile(
-                  title: Text("Connect", style: TextStyle(color: theme.textPrimary)),
-                  value: isConnected,
-                  onChanged: appState.mockMode ? null : (val) {
-                    if (val) {
-                      if (appState.port != null) {
-                        logNotifier.connect(appState.port!, appState.baud);
-                      }
-                    } else {
-                      logNotifier.disconnect();
-                    }
-                  },
-                  activeColor: theme.accent,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text("Connect", style: TextStyle(color: theme.textPrimary)),
+                    SizedBox(
+                      height: 30,
+                      child: LiquidSwitch(
+                        value: isConnected,
+                        onChanged: appState.mockMode ? null : (val) {
+                          if (val) {
+                            if (appState.port != null) {
+                              logNotifier.connect(appState.port!, appState.baud);
+                            }
+                          } else {
+                            logNotifier.disconnect();
+                          }
+                        },
+                        activeColor: theme.accent,
+                        inactiveColor: theme.bgInput,
+                      ),
+                    ),
+                  ],
                 ),
 
-                const Divider(),
+                const SizedBox(height: 12),
+                LiquidDivider(color: theme.border.withOpacity(0.5)),
                 _buildSectionLabel("Logging", theme),
-                _buildDropdown<String>(
+                _buildLiquidDropdown<String>(
                   context,
                   label: "Session Mode",
                   value: appState.sessionMode,
@@ -135,14 +152,25 @@ class SettingsDrawer extends ConsumerWidget {
                   onChanged: (val) => ref.read(appStateProvider.notifier).setSessionMode(val!),
                   theme: theme,
                 ),
-                SwitchListTile(
-                  title: Text("Mock Mode", style: TextStyle(color: theme.textPrimary)),
-                  value: appState.mockMode,
-                  onChanged: (val) => logNotifier.toggleMockMode(val),
-                  activeColor: theme.accent,
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text("Mock Mode", style: TextStyle(color: theme.textPrimary)),
+                    SizedBox(
+                      height: 30,
+                      child: LiquidSwitch(
+                        value: appState.mockMode,
+                        onChanged: (val) => logNotifier.toggleMockMode(val),
+                        activeColor: theme.accent,
+                        inactiveColor: theme.bgInput,
+                      ),
+                    ),
+                  ],
                 ),
 
-                const Divider(),
+                const SizedBox(height: 12),
+                LiquidDivider(color: theme.border.withOpacity(0.5)),
                 _buildSectionLabel("Filters", theme),
                 _buildMultiSelect(
                   context,
@@ -172,13 +200,10 @@ class SettingsDrawer extends ConsumerWidget {
                 ),
 
                 const SizedBox(height: 20),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: logNotifier.clearLogs,
-                  child: const Text("Clear Logs"),
+                LiquidButton(
+                  backgroundColor: Colors.red.withOpacity(0.8),
+                  onTap: logNotifier.clearLogs,
+                  child: const Text("Clear Logs", style: TextStyle(color: Colors.white)),
                 )
               ],
             ),
@@ -202,7 +227,7 @@ class SettingsDrawer extends ConsumerWidget {
     );
   }
 
-  Widget _buildDropdown<T>(BuildContext context, {
+  Widget _buildLiquidDropdown<T>(BuildContext context, {
     required String label,
     required T value,
     required List<T> items,
@@ -213,27 +238,15 @@ class SettingsDrawer extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: TextStyle(color: theme.textSecondary, fontSize: 12)),
-        Container(
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: theme.bgInput,
-            border: Border.all(color: theme.border),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<T>(
-              value: value,
-              isExpanded: true,
-              dropdownColor: theme.bgSidebar,
-              style: TextStyle(color: theme.textPrimary, fontSize: 14),
-              items: items.map((e) => DropdownMenuItem(
-                value: e,
-                child: Text("$e"),
-              )).toList(),
-              onChanged: onChanged,
-            ),
-          ),
+        const SizedBox(height: 4),
+        LiquidDropdown<T>(
+          value: value,
+          items: items.map((e) => DropdownMenuItem(value: e, child: Text("$e"))).toList(),
+          onChanged: onChanged,
+          backgroundColor: theme.bgInput,
+          textColor: theme.textPrimary,
+          dropdownColor: theme.bgSidebar,
+          borderColor: theme.border,
         ),
       ],
     );
@@ -250,9 +263,9 @@ class SettingsDrawer extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: TextStyle(color: theme.textSecondary, fontSize: 12)),
-        InkWell(
+        const SizedBox(height: 4),
+        GestureDetector(
           onTap: () async {
-            // Simple dialog for multi-select
             await showDialog(
               context: context,
               builder: (ctx) => _MultiSelectDialog(
@@ -263,14 +276,10 @@ class SettingsDrawer extends ConsumerWidget {
               )
             );
           },
-          child: Container(
-            height: 40,
+          child: LiquidContainer(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: theme.bgInput,
-              border: Border.all(color: theme.border),
-              borderRadius: BorderRadius.circular(4),
-            ),
+            backgroundColor: theme.bgInput,
+            borderColor: theme.border,
             child: Row(
               children: [
                 Expanded(
@@ -313,7 +322,7 @@ class _MultiSelectDialogState extends State<_MultiSelectDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return LiquidDialog(
       backgroundColor: widget.theme.bgSidebar,
       title: Text("Select Items", style: TextStyle(color: widget.theme.textPrimary)),
       content: SizedBox(
@@ -322,13 +331,13 @@ class _MultiSelectDialogState extends State<_MultiSelectDialog> {
         child: ListView(
           children: widget.options.map((e) {
              final isSelected = _current.contains(e);
-             return CheckboxListTile(
-               title: Text(e, style: TextStyle(color: widget.theme.textPrimary)),
+             return LiquidCheckbox(
+               label: Text(e, style: TextStyle(color: widget.theme.textPrimary)),
                value: isSelected,
                activeColor: widget.theme.accent,
                onChanged: (val) {
                  setState(() {
-                   if (val!) {
+                   if (val) {
                      if (e == "ALL") _current = ["ALL"];
                      else {
                        _current.remove("ALL");
@@ -345,15 +354,17 @@ class _MultiSelectDialogState extends State<_MultiSelectDialog> {
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
+        LiquidButton(
+          onTap: () => Navigator.pop(context),
+          backgroundColor: Colors.transparent,
           child: const Text("Cancel"),
         ),
-        TextButton(
-          onPressed: () {
+        LiquidButton(
+          onTap: () {
             widget.onConfirm(_current);
             Navigator.pop(context);
           },
+          backgroundColor: widget.theme.accent.withOpacity(0.5),
           child: const Text("OK"),
         ),
       ],
