@@ -66,7 +66,7 @@ class SettingsDrawer extends ConsumerWidget {
                         SizedBox(
                           width: 30, height: 30,
                           child: LiquidButton(
-                            onPressed: () => ref.read(appStateProvider.notifier).setFontSize(appState.fontSize - 1),
+                            onTap: () => ref.read(appStateProvider.notifier).setFontSize(appState.fontSize - 1),
                             color: theme.bgInput,
                             child: Icon(Icons.remove, size: 16, color: theme.textPrimary),
                           ),
@@ -78,7 +78,7 @@ class SettingsDrawer extends ConsumerWidget {
                         SizedBox(
                           width: 30, height: 30,
                           child: LiquidButton(
-                            onPressed: () => ref.read(appStateProvider.notifier).setFontSize(appState.fontSize + 1),
+                            onTap: () => ref.read(appStateProvider.notifier).setFontSize(appState.fontSize + 1),
                             color: theme.bgInput,
                             child: Icon(Icons.add, size: 16, color: theme.textPrimary),
                           ),
@@ -143,7 +143,6 @@ class SettingsDrawer extends ConsumerWidget {
                             logNotifier.disconnect();
                           }
                         },
-                        // activeColor and inactiveColor removed
                       ),
                     ),
                   ],
@@ -170,7 +169,6 @@ class SettingsDrawer extends ConsumerWidget {
                       child: LiquidSwitch(
                         value: appState.mockMode,
                         onChanged: (val) => logNotifier.toggleMockMode(val),
-                        // activeColor and inactiveColor removed
                       ),
                     ),
                   ],
@@ -209,7 +207,7 @@ class SettingsDrawer extends ConsumerWidget {
                 const SizedBox(height: 20),
                 LiquidButton(
                   color: Colors.red.withOpacity(0.8),
-                  onPressed: logNotifier.clearLogs,
+                  onTap: logNotifier.clearLogs,
                   child: const Text("Clear Logs", style: TextStyle(color: Colors.white)),
                 )
               ],
@@ -251,9 +249,6 @@ class SettingsDrawer extends ConsumerWidget {
           items: items.map((e) => DropdownMenuItem(value: e, child: Text("$e"))).toList(),
           onChanged: onChanged,
           color: theme.bgInput,
-          // textColor removed if invalid, likely handled by child style
-          dropdownColor: theme.bgSidebar,
-          borderColor: theme.border,
         ),
       ],
     );
@@ -286,7 +281,6 @@ class SettingsDrawer extends ConsumerWidget {
           child: LiquidContainer(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             color: theme.bgInput,
-            borderColor: theme.border,
             child: Row(
               children: [
                 Expanded(
@@ -331,68 +325,67 @@ class _MultiSelectDialogState extends State<_MultiSelectDialog> {
   Widget build(BuildContext context) {
     return LiquidDialog(
       color: widget.theme.bgSidebar,
-      title: Text("Select Items", style: TextStyle(color: widget.theme.textPrimary)),
-      content: SizedBox(
+      child: SizedBox(
         width: 300,
         height: 400,
-        child: ListView(
-          children: widget.options.map((e) {
-             final isSelected = _current.contains(e);
-             return Row(
+        child: Column(
+          children: [
+             Padding(
+               padding: const EdgeInsets.all(16.0),
+               child: Text("Select Items", style: TextStyle(color: widget.theme.textPrimary, fontSize: 18)),
+             ),
+             Expanded(
+               child: ListView(
+                 children: widget.options.map((e) {
+                    final isSelected = _current.contains(e);
+                    return Row(
+                      children: [
+                        LiquidCheckbox(
+                          value: isSelected,
+                          onChanged: (val) {
+                            setState(() {
+                              if (val) {
+                                if (e == "ALL") _current = ["ALL"];
+                                else {
+                                  _current.remove("ALL");
+                                  _current.add(e);
+                                }
+                              } else {
+                                _current.remove(e);
+                                if (_current.isEmpty) _current = ["ALL"];
+                              }
+                            });
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(e, style: TextStyle(color: widget.theme.textPrimary))),
+                      ],
+                    );
+                 }).toList(),
+               ),
+             ),
+             Row(
+               mainAxisAlignment: MainAxisAlignment.end,
                children: [
-                 LiquidCheckbox(
-                   value: isSelected,
-                   // activeColor removed
-                   onChanged: (val) {
-                     setState(() {
-                       if (val) {
-                         if (e == "ALL") _current = ["ALL"];
-                         else {
-                           _current.remove("ALL");
-                           _current.add(e);
-                         }
-                       } else {
-                         _current.remove(e);
-                         if (_current.isEmpty) _current = ["ALL"];
-                       }
-                     });
-                   },
+                 LiquidButton(
+                   onTap: () => Navigator.pop(context),
+                   color: Colors.transparent,
+                   child: const Text("Cancel"),
                  ),
-                 Text(e, style: TextStyle(color: widget.theme.textPrimary)),
+                 const SizedBox(width: 8),
+                 LiquidButton(
+                   onTap: () {
+                     widget.onConfirm(_current);
+                     Navigator.pop(context);
+                   },
+                   color: widget.theme.accent.withOpacity(0.5),
+                   child: const Text("OK"),
+                 ),
                ],
-             );
-                 setState(() {
-                   if (val) {
-                     if (e == "ALL") _current = ["ALL"];
-                     else {
-                       _current.remove("ALL");
-                       _current.add(e);
-                     }
-                   } else {
-                     _current.remove(e);
-                     if (_current.isEmpty) _current = ["ALL"];
-                   }
-                 });
-               },
-             );
-          }).toList(),
+             )
+          ]
         ),
       ),
-      actions: [
-        LiquidButton(
-          onPressed: () => Navigator.pop(context),
-          color: Colors.transparent,
-          child: const Text("Cancel"),
-        ),
-        LiquidButton(
-          onPressed: () {
-            widget.onConfirm(_current);
-            Navigator.pop(context);
-          },
-          color: widget.theme.accent.withOpacity(0.5),
-          child: const Text("OK"),
-        ),
-      ],
     );
   }
 }

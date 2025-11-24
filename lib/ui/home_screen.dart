@@ -43,7 +43,7 @@ class HomeScreen extends ConsumerWidget {
          // Our HeaderBar is complex (search, buttons).
          // We might just put HeaderBar in the body if LiquidAppBar is too restrictive.
          // backgroundColor: Colors.transparent, // Removed invalid param
-         elevation: 0,
+         // elevation: 0, // Removed invalid param
       ),
       drawer: const SettingsDrawer(),
       body: const Column(

@@ -95,13 +95,21 @@ class _CliInputState extends ConsumerState<CliInput> {
                    }
                 }
               },
-              child: LiquidTextField(
-                controller: _controller,
-                focusNode: _focusNode,
-                hintText: "Send command...",
-                // hintStyle: TextStyle(color: theme.textSecondary.withOpacity(0.5)),
-                // border: InputBorder.none,
-                onSubmitted: (_) => _send(),
+              // LiquidTextField doesn't support focusNode, so we use a standard TextField wrapped in a glass container
+              child: LiquidContainer(
+                color: theme.bgInput,
+                child: TextField(
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  style: TextStyle(color: theme.textPrimary, fontFamily: 'JetBrains Mono'),
+                  decoration: InputDecoration(
+                    hintText: "Send command...",
+                    hintStyle: TextStyle(color: theme.textSecondary.withOpacity(0.5)),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  onSubmitted: (_) => _send(),
+                ),
               ),
             ),
           ),
@@ -114,8 +122,8 @@ class _CliInputState extends ConsumerState<CliInput> {
               items: ["LF", "CR", "CRLF"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
               onChanged: (v) => ref.read(appStateProvider.notifier).setCliLineEnding(v!),
               color: theme.bgInput,
-              dropdownColor: theme.bgSidebar,
-              borderColor: theme.border,
+              // dropdownColor removed
+              // borderColor removed
             ),
           ),
           const SizedBox(width: 8),
@@ -123,7 +131,7 @@ class _CliInputState extends ConsumerState<CliInput> {
             width: 40, height: 40,
             child: LiquidButton(
               color: theme.accent.withOpacity(0.2),
-              onPressed: _send,
+              onTap: _send,
               child: Icon(Icons.send, color: theme.accent, size: 20),
             ),
           )
