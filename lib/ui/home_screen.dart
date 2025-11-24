@@ -6,7 +6,7 @@ import 'package:serial_lens/ui/components/settings_drawer.dart';
 import 'package:serial_lens/ui/components/header_bar.dart';
 import 'package:serial_lens/ui/components/log_list_view.dart';
 import 'package:serial_lens/ui/components/cli_input.dart';
-import 'package:liquid_glass_ui_design/liquid_glass_ui_design.dart';
+import 'package:liquid_glass_ui_design/liquid_glass_ui.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});

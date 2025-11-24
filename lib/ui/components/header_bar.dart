@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:serial_lens/providers/app_state_provider.dart';
 import 'package:serial_lens/providers/log_provider.dart';
 import 'package:serial_lens/ui/themes.dart';
-import 'package:liquid_glass_ui_design/liquid_glass_ui_design.dart';
+import 'package:liquid_glass_ui_design/liquid_glass_ui.dart';
 
 class HeaderBar extends ConsumerWidget {
   const HeaderBar({super.key});

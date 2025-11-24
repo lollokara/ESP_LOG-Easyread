@@ -5,7 +5,7 @@ import 'package:serial_lens/providers/app_state_provider.dart';
 import 'package:serial_lens/ui/themes.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:liquid_glass_ui_design/liquid_glass_ui_design.dart';
+import 'package:liquid_glass_ui_design/liquid_glass_ui.dart';
 import 'dart:io';
 
 void main() async {
