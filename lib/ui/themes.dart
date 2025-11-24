@@ -160,7 +160,7 @@ class SerialLensThemes {
         background: t.bgMain,
         surface: t.bgSidebar,
       ),
-      textTheme: GoogleFonts.jetbrainsMonoTextTheme(base.textTheme).apply(
+      textTheme: GoogleFonts.jetBrainsMonoTextTheme(base.textTheme).apply(
         bodyColor: t.textPrimary,
         displayColor: t.textPrimary,
       ),

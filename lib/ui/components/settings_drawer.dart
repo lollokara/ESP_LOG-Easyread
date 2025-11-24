@@ -192,12 +192,11 @@ class SettingsDrawer extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0, top: 4.0),
       child: Text(
-        label,
+        label.toUpperCase(),
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.bold,
           color: theme.textSecondary,
-          uppercase: true,
         ),
       ),
     );

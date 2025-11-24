@@ -58,11 +58,27 @@ fi
 echo "🔹 Setting up project..."
 
 # Ensure we have the macOS runner scaffolding
+NEEDS_REGEN=false
+
 if [ ! -d "macos" ]; then
-    echo "🔸 Generating macOS runner..."
+    echo "🔸 macOS directory missing."
+    NEEDS_REGEN=true
+elif [ ! -f "macos/Runner.xcodeproj/project.pbxproj" ]; then
+    echo "⚠️  macOS project corrupted (missing project.pbxproj)."
+    NEEDS_REGEN=true
+fi
+
+if [ "$NEEDS_REGEN" = true ]; then
+    echo "🔸 (Re)Generating macOS runner..."
+    # Backup Entitlements if they exist and we are regenerating?
+    # Actually, the script re-patches them later, so it is safer to start fresh.
+    rm -rf macos
     flutter config --enable-macos-desktop
     flutter create . --platforms=macos
 fi
+
+echo "🔸 Cleaning stale build artifacts..."
+flutter clean
 
 echo "🔸 Getting packages..."
 flutter pub get
