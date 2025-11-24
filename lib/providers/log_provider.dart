@@ -69,14 +69,9 @@ class FilterNotifier extends StateNotifier<FilterState> {
 final dbProvider = Provider((ref) => DatabaseManager());
 
 final serialServiceProvider = Provider((ref) {
-  // We want the serial service to interact with the LogProvider's state or DB directly
-  // But SerialService needs a callback.
-  // We'll wire it up in the main LogNotifier or a separate coordination logic.
-  // For now, let's just expose the class, and LogNotifier will initialize it.
   throw UnimplementedError("Use logProvider to access logs");
 });
 
-// The main provider for logs list
 final logProvider = StateNotifierProvider<LogNotifier, AsyncValue<List<LogEntry>>>((ref) {
   final db = ref.watch(dbProvider);
   final filter = ref.watch(filterProvider);
@@ -90,12 +85,16 @@ class LogNotifier extends StateNotifier<AsyncValue<List<LogEntry>>> {
   late final SerialService _serialService;
 
   int? _currentSessionId;
-  final List<LogEntry> _liveBuffer = [];
-  bool _initialized = false;
+
+  // Windowing State
+  int _dbOffset = 0; // The offset of the FIRST log in our current list relative to the DB result set
+  final int _windowSize = 2000; // Max logs to keep in memory/list
 
   // Available filter options cache
   final Set<String> _uniqueFiles = {"ALL"};
   final Set<String> _uniqueFunctions = {"ALL"};
+
+  bool _fetching = false;
 
   LogNotifier(this.ref, this.db, this.filter) : super(const AsyncValue.loading()) {
     _serialService = SerialService(onLogReceived: _handleLog);
@@ -104,36 +103,18 @@ class LogNotifier extends StateNotifier<AsyncValue<List<LogEntry>>> {
 
   Future<void> _init() async {
     await db.init();
-    // Start a default session if needed or load last
-    // For now, let's create a new session on app start like Python code
     final sessionId = await db.createSession("Session ${DateTime.now()}", "App Start");
     _currentSessionId = sessionId;
 
     // Load initial logs
-    _loadLogs();
-    _initialized = true;
+    _loadInitialView();
   }
 
-  Future<void> _loadLogs() async {
+  Future<void> _loadInitialView() async {
     if (_currentSessionId == null) return;
     try {
       state = const AsyncValue.loading();
-      final logs = await db.getLogs(
-        _currentSessionId!,
-        limit: 2000, // Initial load limit
-        offset: 0, // From start? Or need last N? Python loads last N.
-        // But for infinite scroll ListView, we usually just load a chunk.
-        // Let's load the *last* 2000 logs if we are auto-scrolling, or first 2000?
-        // Flutter ListView.builder can handle list efficiently.
-        // If we want "stick to bottom", we usually load all into memory if it fits,
-        // or we use a reverse list.
-        // Given 2000 lines limit in Python DOM, we can probably hold more in Dart memory.
-        // Let's just fetch the last 2000 for now.
-        // But `getLogs` with offset 0 and limit 2000 fetches the *first* 2000 chronologically.
-        // We need to know the total count to fetch the *last* 2000.
-      );
 
-      // Actually, to mimic the Python behavior of "Load Initial View":
       final total = await db.getTotalLogCount(_currentSessionId!,
         levelFilter: filter.levels,
         fileFilter: filter.files,
@@ -141,14 +122,16 @@ class LogNotifier extends StateNotifier<AsyncValue<List<LogEntry>>> {
         searchTerm: filter.searchTerm
       );
 
+      // Load last N logs
       int startOffset = 0;
-      if (total > 2000) {
-        startOffset = total - 2000;
+      if (total > _windowSize) {
+        startOffset = total - _windowSize;
       }
+      _dbOffset = startOffset;
 
       final initialLogs = await db.getLogs(
         _currentSessionId!,
-        limit: 2000,
+        limit: _windowSize,
         offset: startOffset,
         levelFilter: filter.levels,
         fileFilter: filter.files,
@@ -166,35 +149,42 @@ class LogNotifier extends StateNotifier<AsyncValue<List<LogEntry>>> {
   void _handleLog(LogEntry entry) {
     if (_currentSessionId == null) return;
 
-    // Insert into DB
+    // 1. Always insert into DB
     db.insertLog(_currentSessionId!, entry);
 
-    // Update unique caches
-    bool updatedFilters = false;
+    // 2. Update unique caches
     if (entry.file != "UNDEFINED" && !_uniqueFiles.contains(entry.file)) {
       _uniqueFiles.add(entry.file);
-      updatedFilters = true;
     }
     if (entry.function != "UNDEFINED" && !_uniqueFunctions.contains(entry.function)) {
       _uniqueFunctions.add(entry.function);
-      updatedFilters = true;
     }
 
-    // Check if entry matches current filters
-    if (!_matchesFilter(entry)) return;
+    // 3. Update UI List ONLY if AutoScroll is ON (Live Mode)
+    final autoScroll = ref.read(appStateProvider).autoScroll;
 
-    // Add to state if loaded
-    state.whenData((logs) {
-      // Create new list to trigger notify
-      final newLogs = [...logs, entry];
-      // Prune if too large?
-      // Python pruned from top if > 2000.
-      // In Flutter we can handle more, but let's keep it sane, say 5000.
-      if (newLogs.length > 5000) {
-        newLogs.removeAt(0);
-      }
-      state = AsyncValue.data(newLogs);
-    });
+    if (autoScroll) {
+      // Check if entry matches current filters
+      if (!_matchesFilter(entry)) return;
+
+      state.whenData((logs) {
+        final newLogs = [...logs, entry];
+
+        // Prune from top if too large (keep window sliding forward)
+        if (newLogs.length > _windowSize) {
+          final removedCount = newLogs.length - _windowSize;
+          newLogs.removeRange(0, removedCount);
+          _dbOffset += removedCount; // Our window start moved forward in the DB
+        }
+
+        state = AsyncValue.data(newLogs);
+      });
+    } else {
+      // History Mode: Do NOT update state.
+      // The user is looking at a static window.
+      // New logs are in DB but not in our list.
+      // If user scrolls down later, we fetch them.
+    }
   }
 
   bool _matchesFilter(LogEntry entry) {
@@ -202,10 +192,6 @@ class LogNotifier extends StateNotifier<AsyncValue<List<LogEntry>>> {
     if (!filter.files.contains("ALL") && !filter.files.contains(entry.file)) return false;
     if (!filter.functions.contains("ALL") && !filter.functions.contains(entry.function)) return false;
     if (filter.searchTerm.isNotEmpty) {
-      // Simple contains check for live logs, consistent with SQL LIKE logic approx
-      // But for exact wildcard matching we'd need regex or fnmatch logic here too.
-      // Let's just do a lower-case check for now or strict.
-      // Python used `fnmatch` but SQL uses LIKE.
       if (!entry.original.toLowerCase().contains(filter.searchTerm.toLowerCase())) return false;
     }
     return true;
@@ -221,6 +207,7 @@ class LogNotifier extends StateNotifier<AsyncValue<List<LogEntry>>> {
        state = const AsyncValue.data([]);
        _uniqueFiles.clear(); _uniqueFiles.add("ALL");
        _uniqueFunctions.clear(); _uniqueFunctions.add("ALL");
+       _dbOffset = 0;
     }
 
     ref.read(appStateProvider.notifier).setPort(port);
@@ -239,13 +226,15 @@ class LogNotifier extends StateNotifier<AsyncValue<List<LogEntry>>> {
   }
 
   void clearLogs() {
-    // Just clear view
     state = const AsyncValue.data([]);
+    _dbOffset = 0; // But wait, DB isn't cleared.
+    // Usually "Clear Logs" means clear the view.
+    // If we reload from DB, we might see them again unless we mark a "start_time".
+    // For now, assume view clear.
   }
 
   void refreshFilters() {
-    // Trigger a reload based on new filters
-    _loadLogs();
+    _loadInitialView();
   }
 
   List<String> getUniqueFiles() => _uniqueFiles.toList()..sort();
@@ -253,10 +242,86 @@ class LogNotifier extends StateNotifier<AsyncValue<List<LogEntry>>> {
 
   SerialService get serialService => _serialService;
 
-  Future<void> loadOlderLogs() async {
-    // This requires tracking the offset of the top log.
-    // For MVP, we can implement if needed.
-    // Flutter's ListView usually handles this by scrolling up and triggering a fetch.
-    // But since we have `state` as a List in memory, we prepend to it.
+  Future<int> loadOlderLogs() async {
+    if (_fetching || _currentSessionId == null || _dbOffset <= 0) return 0;
+    _fetching = true;
+
+    try {
+      final int fetchCount = 500;
+      final int targetOffset = (_dbOffset - fetchCount) < 0 ? 0 : (_dbOffset - fetchCount);
+      final int realLimit = _dbOffset - targetOffset;
+
+      if (realLimit <= 0) return 0;
+
+      final olderLogs = await db.getLogs(
+        _currentSessionId!,
+        limit: realLimit,
+        offset: targetOffset,
+        levelFilter: filter.levels,
+        fileFilter: filter.files,
+        functionFilter: filter.functions,
+        searchTerm: filter.searchTerm
+      );
+
+      if (olderLogs.isNotEmpty) {
+        state.whenData((currentLogs) {
+          final newLogs = [...olderLogs, ...currentLogs];
+          // Prune bottom if too big (sliding window back)
+          if (newLogs.length > _windowSize) {
+             newLogs.removeRange(_windowSize, newLogs.length);
+             // Note: removing from bottom doesn't affect _dbOffset start position
+             // BUT it creates a gap at the end. That's fine.
+          }
+          state = AsyncValue.data(newLogs);
+          _dbOffset = targetOffset;
+        });
+      }
+      return olderLogs.length;
+    } finally {
+      _fetching = false;
+    }
+  }
+
+  Future<int> loadNewerLogs() async {
+    if (_fetching || _currentSessionId == null) return 0;
+
+    final currentLen = state.value?.length ?? 0;
+    if (currentLen == 0) return 0;
+
+    // We want logs starting after our current last log.
+    // Our list starts at _dbOffset and has currentLen items.
+    // So next log is at _dbOffset + currentLen.
+
+    _fetching = true;
+    try {
+      final start = _dbOffset + currentLen;
+      final fetchCount = 500;
+
+      final newerLogs = await db.getLogs(
+        _currentSessionId!,
+        limit: fetchCount,
+        offset: start,
+        levelFilter: filter.levels,
+        fileFilter: filter.files,
+        functionFilter: filter.functions,
+        searchTerm: filter.searchTerm
+      );
+
+      if (newerLogs.isNotEmpty) {
+         state.whenData((currentLogs) {
+           final newLogs = [...currentLogs, ...newerLogs];
+           // Prune top if too big (sliding window forward)
+           if (newLogs.length > _windowSize) {
+             final removed = newLogs.length - _windowSize;
+             newLogs.removeRange(0, removed);
+             _dbOffset += removed;
+           }
+           state = AsyncValue.data(newLogs);
+         });
+      }
+      return newerLogs.length;
+    } finally {
+      _fetching = false;
+    }
   }
 }

@@ -85,19 +85,19 @@ class SerialLensThemes {
   static const cyberpunk = SerialTheme(
     name: "Cyberpunk",
     bgMain: Colors.black,
-    bgSidebar: Color(0xFF18181B), // zinc-900
-    bgHeader: Color(0xFF18181B),
+    bgSidebar: Color(0xFF121212), // Very dark gray
+    bgHeader: Color(0xFF121212),
     bgInput: Colors.black,
-    textPrimary: Color(0xFF22D3EE), // cyan-400
-    textSecondary: Color(0xFFEC4899), // pink-500
-    border: Color(0xFFEC4899),
-    logHover: Color(0xFF18181B),
-    logV: Color(0xFF71717A), // zinc-500
-    logD: Color(0xFF22D3EE),
-    logI: Color(0xFF4ADE80),
-    logW: Color(0xFFFACC15),
-    logE: Color(0xFFEF4444),
-    accent: Colors.cyanAccent,
+    textPrimary: Color(0xFF00FF9C), // Neon Green
+    textSecondary: Color(0xFFFF00FF), // Neon Pink
+    border: Color(0xFF00FFFF), // Cyan
+    logHover: Color(0xFF1A1A1A),
+    logV: Color(0xFF808080),
+    logD: Color(0xFF00FFFF), // Cyan
+    logI: Color(0xFF00FF9C), // Green
+    logW: Color(0xFFFFD700), // Gold
+    logE: Color(0xFFFF0055), // Hot Pink/Red
+    accent: Color(0xFF00FFFF),
     isDark: true,
   );
 
@@ -123,18 +123,18 @@ class SerialLensThemes {
   static final glassDark = dark.copyWith(
     name: "Glass Dark",
     bgMain: Colors.transparent, // Handled by container
-    bgSidebar: const Color(0x66141414), // Transparent + Blur
-    bgHeader: const Color(0x66141414),
-    bgInput: const Color(0x4D000000),
+    bgSidebar: const Color(0x33000000), // More transparent (0x33 = ~20%)
+    bgHeader: const Color(0x33000000),
+    bgInput: const Color(0x22FFFFFF),
     isGlass: true,
   );
 
   static final glassLight = light.copyWith(
     name: "Glass Light",
     bgMain: Colors.transparent,
-    bgSidebar: const Color(0x66FFFFFF),
-    bgHeader: const Color(0x66FFFFFF),
-    bgInput: const Color(0x4DFFFFFF),
+    bgSidebar: const Color(0x33FFFFFF),
+    bgHeader: const Color(0x33FFFFFF),
+    bgInput: const Color(0x22000000),
     isGlass: true,
   );
 

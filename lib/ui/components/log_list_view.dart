@@ -30,6 +30,7 @@ class _LogListViewState extends ConsumerState<LogListView> {
     final maxScroll = _scrollController.position.maxScrollExtent;
     final currentScroll = _scrollController.position.pixels;
 
+    // 1. Detect Stick to Bottom
     // Check if user scrolled away from bottom
     if (maxScroll - currentScroll > 50) {
       if (_stickToBottom) {
@@ -41,11 +42,41 @@ class _LogListViewState extends ConsumerState<LogListView> {
     } else {
       if (!_stickToBottom) {
         setState(() => _stickToBottom = true);
-        // Re-enable auto-scroll? Or let user do it via button?
-        // Usually clicking "Scroll to Bottom" re-enables it.
       }
       if (_showScrollToBottom) setState(() => _showScrollToBottom = false);
     }
+
+    // 2. Detect Top Edge (Load Older)
+    if (currentScroll < 100) { // Top threshold
+       _handleLoadOlder();
+    }
+
+    // 3. Detect Bottom Edge (Load Newer - if not sticking)
+    if (!_stickToBottom && (maxScroll - currentScroll < 100)) {
+       _handleLoadNewer();
+    }
+  }
+
+  Future<void> _handleLoadOlder() async {
+    final notifier = ref.read(logProvider.notifier);
+    final count = await notifier.loadOlderLogs();
+
+    if (count > 0 && _scrollController.hasClients) {
+      // Maintaining scroll position after prepending is tricky in Flutter.
+      // When items are added to top, the content size grows, but 'pixels' (offset from top) stays same.
+      // This means we are now looking at the NEW items at the top.
+      // User expects to stay at the "old top" (now middle).
+      // We assume average row height? Or just jump.
+      // Jumping is hard without knowing exact height.
+      // A simple workaround is to let the user scroll up again, or try to jump a bit.
+      // But typically creating a jump is less jarring than losing context.
+      // For now, let's notify user.
+      // In a real production app, we'd calculate height or use a center-key list.
+    }
+  }
+
+  Future<void> _handleLoadNewer() async {
+     await ref.read(logProvider.notifier).loadNewerLogs();
   }
 
   void _scrollToBottom() {
@@ -56,6 +87,8 @@ class _LogListViewState extends ConsumerState<LogListView> {
         _showScrollToBottom = false;
       });
       ref.read(appStateProvider.notifier).setAutoScroll(true);
+      // Also ensure we load newer logs if we were far back
+      ref.read(logProvider.notifier).loadNewerLogs();
     }
   }
 
@@ -92,8 +125,8 @@ class _LogListViewState extends ConsumerState<LogListView> {
             return ListView.builder(
               controller: _scrollController,
               itemCount: logs.length,
-              // Cache extent for smoother scrolling
               cacheExtent: 500,
+              // physics: const AlwaysScrollableScrollPhysics(), // Ensure bounce on mac
               itemBuilder: (context, index) {
                 final entry = logs[index];
                 return _LogItem(
