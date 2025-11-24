@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 // --- Theme Data Classes ---
 
@@ -119,8 +120,6 @@ class SerialLensThemes {
     isDark: true,
   );
 
-  // Glass themes in Flutter are handled by Widgets (BackdropFilter),
-  // but we can define the base colors here.
   static final glassDark = dark.copyWith(
     name: "Glass Dark",
     bgMain: Colors.transparent, // Handled by container
@@ -161,8 +160,7 @@ class SerialLensThemes {
         background: t.bgMain,
         surface: t.bgSidebar,
       ),
-      textTheme: base.textTheme.apply(
-        fontFamily: 'JetBrains Mono', // User must ensure font is in pubspec
+      textTheme: GoogleFonts.jetbrainsMonoTextTheme(base.textTheme).apply(
         bodyColor: t.textPrimary,
         displayColor: t.textPrimary,
       ),
@@ -173,7 +171,6 @@ class SerialLensThemes {
   }
 }
 
-// Extension to access custom semantic colors in widgets
 class SerialThemeExtension extends ThemeExtension<SerialThemeExtension> {
   final SerialTheme data;
   SerialThemeExtension(this.data);
@@ -184,11 +181,10 @@ class SerialThemeExtension extends ThemeExtension<SerialThemeExtension> {
   @override
   SerialThemeExtension lerp(ThemeExtension<SerialThemeExtension>? other, double t) {
     if (other is! SerialThemeExtension) return this;
-    return this; // No lerping for now
+    return this;
   }
 }
 
-// Helper methods for LogEntry copyWith
 extension LogEntryCopy on SerialTheme {
   SerialTheme copyWith({
     String? name,
