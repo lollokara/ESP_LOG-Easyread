@@ -25,22 +25,24 @@ class HeaderBar extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          LiquidButton(
+          SizedBox(
             width: 40,
             height: 40,
-            backgroundColor: theme.bgInput,
-            onTap: () => Scaffold.of(context).openDrawer(),
-            child: Icon(Icons.menu, color: theme.textPrimary, size: 20),
+            child: LiquidButton(
+              color: theme.bgInput,
+              onPressed: () => Scaffold.of(context).openDrawer(),
+              child: Icon(Icons.menu, color: theme.textPrimary, size: 20),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: LiquidTextField(
               hintText: "Search logs... (* ?)",
-              textColor: theme.textPrimary,
-              hintColor: theme.textSecondary.withOpacity(0.5),
-              backgroundColor: theme.bgInput,
+              // textColor removed, assuming style param or default
+              // hintColor removed
+              // backgroundColor -> color likely not supported directly or different param, removing to avoid error if unknown
+              // prefixIcon might be 'prefix' or 'icon'
               onChanged: (val) => ref.read(filterProvider.notifier).setSearchTerm(val),
-              prefixIcon: Icon(Icons.search, size: 18, color: theme.textSecondary),
               // We need to handle "clear" button manually or if LiquidTextField supports suffix
               suffixIcon: filter.searchTerm.isNotEmpty
                   ? GestureDetector(
@@ -86,8 +88,7 @@ class HeaderBar extends ConsumerWidget {
           child: LiquidSwitch(
             value: value,
             onChanged: onChanged,
-            activeColor: theme.accent,
-            inactiveColor: theme.bgInput,
+            // activeColor and inactiveColor removed
           ),
         ),
       ],

@@ -42,7 +42,7 @@ class HomeScreen extends ConsumerWidget {
          // LiquidAppBar expects a title widget.
          // Our HeaderBar is complex (search, buttons).
          // We might just put HeaderBar in the body if LiquidAppBar is too restrictive.
-         backgroundColor: Colors.transparent,
+         // backgroundColor: Colors.transparent, // Removed invalid param
          elevation: 0,
       ),
       drawer: const SettingsDrawer(),

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:serial_lens/providers/app_state_provider.dart';
 import 'package:serial_lens/providers/log_provider.dart';
 import 'package:serial_lens/ui/themes.dart';
+import 'package:liquid_glass_ui_design/liquid_glass_ui.dart';
 
 class CliInput extends ConsumerStatefulWidget {
   const CliInput({super.key});
@@ -43,12 +44,6 @@ class _CliInputState extends ConsumerState<CliInput> {
     _focusNode.requestFocus();
   }
 
-  void _handleKey(RawKeyEvent event) {
-    // Handling Up/Down arrow for history is tricky in Flutter TextField directly
-    // Usually requires a FocusNode KeyListener wrapper.
-    // Implemented in build via KeyboardListener.
-  }
-
   void _navigateHistory(int dir) {
     if (_history.isEmpty) return;
 
@@ -75,19 +70,22 @@ class _CliInputState extends ConsumerState<CliInput> {
     final appState = ref.watch(appStateProvider);
 
     return Container(
+      // Keep background transparent or use LiquidContainer?
+      // Using LiquidContainer for consistency with glass theme.
+      // But HeaderBar removed background, maybe we should too?
+      // Let's use LiquidContainer but with theme.bgHeader (which is semi-transparent)
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
-        color: theme.bgHeader,
-        border: Border(top: BorderSide(color: theme.border)),
+         // Using transparent container but with border handled by parent or manual
+         border: Border(top: BorderSide(color: theme.border.withOpacity(0.3))),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
         children: [
           Icon(Icons.terminal, color: theme.textSecondary),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
           Expanded(
             child: RawKeyboardListener(
-              focusNode: FocusNode(), // Dummy node to capture keys before TextField?
-              // Actually wrapping TextField in KeyboardListener works if TextField has focus
+              focusNode: FocusNode(),
               onKey: (event) {
                 if (event is RawKeyDownEvent) {
                    if (event.logicalKey.keyLabel == "Arrow Up") {
@@ -97,32 +95,37 @@ class _CliInputState extends ConsumerState<CliInput> {
                    }
                 }
               },
-              child: TextField(
+              child: LiquidTextField(
                 controller: _controller,
                 focusNode: _focusNode,
-                style: TextStyle(color: theme.textPrimary, fontFamily: 'JetBrains Mono'),
-                decoration: InputDecoration(
-                  hintText: "Send command...",
-                  hintStyle: TextStyle(color: theme.textSecondary.withOpacity(0.5)),
-                  border: InputBorder.none,
-                ),
+                hintText: "Send command...",
+                // hintStyle: TextStyle(color: theme.textSecondary.withOpacity(0.5)),
+                // border: InputBorder.none,
                 onSubmitted: (_) => _send(),
               ),
             ),
           ),
+          const SizedBox(width: 8),
           // Line Ending Selector
-          DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
+          SizedBox(
+            width: 80,
+            child: LiquidDropdown<String>(
               value: appState.cliLineEnding,
-              dropdownColor: theme.bgSidebar,
-              style: TextStyle(color: theme.textSecondary, fontSize: 12),
               items: ["LF", "CR", "CRLF"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
               onChanged: (v) => ref.read(appStateProvider.notifier).setCliLineEnding(v!),
+              color: theme.bgInput,
+              dropdownColor: theme.bgSidebar,
+              borderColor: theme.border,
             ),
           ),
-          IconButton(
-            icon: Icon(Icons.send, color: theme.accent),
-            onPressed: _send,
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 40, height: 40,
+            child: LiquidButton(
+              color: theme.accent.withOpacity(0.2),
+              onPressed: _send,
+              child: Icon(Icons.send, color: theme.accent, size: 20),
+            ),
           )
         ],
       ),

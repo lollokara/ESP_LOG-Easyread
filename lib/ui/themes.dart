@@ -148,7 +148,7 @@ class SerialLensThemes {
     return LiquidTheme(
       primaryColor: t.bgSidebar, // Using sidebar color as primary "glass" color
       accentColor: t.accent,
-      typographyColor: t.textPrimary,
+      textColor: t.textPrimary,
       surfaceColor: t.bgHeader,
       backgroundColor: t.bgMain,
       dividerColor: t.border,
